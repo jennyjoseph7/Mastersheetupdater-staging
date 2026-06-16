@@ -19,7 +19,7 @@
 
 // Set your actual frontend domains here (must match config.js origins).
 // The '*' wildcard is NOT allowed in production — it lets any site proxy requests.
-const ALLOWED_ORIGINS = ['http://localhost:5500', 'http://127.0.0.1:5500', 'http://localhost:8080'];
+const ALLOWED_ORIGINS = ['http://localhost:5500', 'http://127.0.0.1:5500', 'http://localhost:8080', 'https://jennyjoseph7.github.io'];
 
 const NVIDIA_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const GRYD_ENDPOINT = 'https://autobot-webapp-dev.gryd.in';
