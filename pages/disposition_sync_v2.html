@@ -1,0 +1,5106 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+
+
+<head>
+
+  <meta charset="UTF-8" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+
+  
+
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' http://localhost:3456; form-action 'self'; base-uri 'self'; object-src 'none'; " />
+
+  <script>
+
+    (function () {
+
+      var theme = localStorage.getItem('jejo-theme') || 'dark';
+
+      document.documentElement.setAttribute('data-theme', theme);
+
+    })();
+
+  </script>
+
+  <script>
+
+    (function() {
+      function requireAuth() {
+        var token = sessionStorage.getItem('gryd_token');
+        var expiry = sessionStorage.getItem('gryd_expiry');
+        if (!token || !expiry || parseInt(expiry) <= Math.floor(Date.now() / 1000)) {
+          window.location.replace('../login.html');
+          return false;
+        }
+        return true;
+      }
+      requireAuth();
+      window.addEventListener('pageshow', function() { requireAuth(); });
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') requireAuth();
+      });
+      window.addEventListener('unload', function() {});
+    })();
+
+  </script>
+
+  <title>Pre-Sales Sync - AutoNage</title>
+
+  <meta name="description"
+
+    content="Merges AutoEngage Audience & Leads + Sessions exports and produces a Zoho Master Sheet-ready table." />
+
+  <link rel="stylesheet" href="../assets/fonts/fonts.css" />
+
+  <script src="../assets/js/lib/ai-config.js?v=20260613"></script>
+  <script src="../config.js?v=20260610"></script>
+
+  <script src="../assets/js/vendor/xlsx.full.min.js"></script>
+
+  <script src="../assets/js/lib/history-helpers.js"></script>
+
+  <script src="../assets/js/lib/llm-batch-runner.js?v=20260610-ratelimit"></script>
+
+  <link rel="stylesheet" href="../assets/styles/disposition-sync-v2.css" />
+
+</head>
+
+
+
+<body>
+
+
+
+  <!-- Processing Overlay -->
+
+  <div class="processing-overlay" id="processingOverlay">
+
+    <div class="processing-card">
+
+      <div class="spinner"></div>
+
+      <span id="processingMsg">Processing files…</span>
+
+      <div class="progress-track" id="progressTrack" style="display:none;width:100%;height:6px;background:var(--surface3);border-radius:999px;overflow:hidden;margin-top:0.5rem;">
+
+        <div class="progress-fill" id="progressFill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent-dim));border-radius:999px;transition:width 0.4s ease;"></div>
+
+      </div>
+
+      <span id="progressCounter" style="display:none;font-size:0.78rem;color:var(--text-muted);"></span>
+
+    </div>
+
+  </div>
+
+
+
+  <!-- Header -->
+
+  <header>
+
+    <div class="header-inner">
+
+      <div class="header-left">
+
+        <a class="brand-mark" href="../index.html" aria-label="Go to home"><img src="../assets/images/AN Dark.png" data-light-logo="../assets/images/AN.png" data-dark-logo="../assets/images/AN Dark.png" alt="AutoNage"></a>
+
+        <div>
+
+          <h1>Pre-Sales Sync</h1>
+
+          <div class="header-sub">AutoEngage → Zoho Master Sheet </div>
+
+        </div>
+
+      </div>
+
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+
+        <div id="navContainer"></div>
+<script>loadNavSafe("navContainer");</script>
+
+        <button class="guide-btn-header" onclick="startGuide()" aria-label="Show guide" title="How to use this page">
+
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+
+          </svg>
+
+        </button>
+
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+
+          <svg class="icon-moon" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+
+            stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round"
+
+              d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+
+          </svg>
+
+          <svg class="icon-sun" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+
+            stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round"
+
+              d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+
+          </svg>
+
+        </button>
+
+      </div>
+
+    </div>
+
+  </header>
+
+
+
+  <!-- Main Content -->
+
+  <main>
+
+    <section class="workflow-panel">
+
+      <div class="section-head">
+
+        <div>
+
+          <div class="eyebrow">Step 1</div>
+
+          <div class="section-title">Prepare the batch</div>
+
+        </div>
+
+        <div class="section-note">Drop the two exports, choose the run settings, then process. Existing formulas and
+
+          output columns are unchanged.</div>
+
+      </div>
+
+
+
+      <!-- Upload Zones -->
+
+      <div class="upload-grid">
+
+        <div class="drop-zone" id="dz1" onclick="document.getElementById('f1').click()" role="button" tabindex="0"
+
+          aria-label="Upload Audience and Leads CSV">
+
+          <div class="dz-icon file1" aria-hidden="true">
+
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+
+              <path stroke-linecap="round" stroke-linejoin="round"
+
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+
+            </svg>
+
+          </div>
+
+          <div class="dz-label">File 1 — Audience & Leads</div>
+
+          <div class="dz-sublabel">AutoEngage → Audience & Leads export</div>
+
+          <div class="dz-cols">person_name · phone_number · city · campaign_id<br>lead_source · disposition · updated ·
+
+            model_preference<br>seating_capacity_preference · disposition_detail</div>
+
+          <div class="dz-status" id="st1">Drag & drop or click to browse</div>
+
+          <input type="file" id="f1" accept=".csv,.xlsx,.xls">
+
+        </div>
+
+
+
+        <div class="drop-zone" id="dz2" onclick="document.getElementById('f2').click()" role="button" tabindex="0"
+
+          aria-label="Upload Sessions CSV">
+
+          <div class="dz-icon file2" aria-hidden="true">
+
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+
+              <path stroke-linecap="round" stroke-linejoin="round"
+
+                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+
+            </svg>
+
+          </div>
+
+          <div class="dz-label">File 2 — Sessions</div>
+
+          <div class="dz-sublabel">AutoEngage → Sessions export</div>
+
+          <div class="dz-cols">phone_number · created · start_time<br>summary · history · call_recording · sentiment_score</div>
+
+          <div class="dz-status" id="st2">Drag & drop or click to browse</div>
+
+          <input type="file" id="f2" accept=".csv,.xlsx,.xls">
+
+        </div>
+
+      </div>
+
+
+
+      <div class="pill-strip">
+
+        <div class="step-pill" id="pill1"><span class="num">1</span> Leads uploaded</div>
+
+        <div class="step-pill" id="pill2"><span class="num">2</span> Sessions uploaded</div>
+
+        <div class="step-pill" id="pill3"><span class="num">3</span> Ready to process</div>
+
+        <div class="step-pill" id="pill4"><span class="num">4</span> Results ready</div>
+
+      </div>
+
+      <!-- Action Bar -->
+
+      <div class="action-bar">
+
+        <button class="btn btn-primary" id="btnProcess" disabled onclick="processFiles()">
+
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+
+          </svg>
+
+          Process Both Files
+
+        </button>
+          <div class="control-group">
+
+            <span class="control-label">Dealership</span>
+
+            <div class="lang-select-wrapper">
+
+              <select class="lang-select" id="dealerSelect" onchange="handleDealerChange()">
+
+                <option value="anant_cars">Anant Cars</option>
+
+                <option value="anant_wa">Anant WA</option>
+
+                <option value="chennai_ev">ChennaiEV</option>
+
+                <option value="singhal">Singhal</option>
+
+                <option value="fortune_hyryder">Fortune Hyryder</option>
+
+                <option value="fortune_honda">Fortune Honda</option>
+
+                <option value="stellantis_wa">Stellantis WA</option>
+
+              </select>
+
+            </div>
+
+          </div>
+
+        <div class="control-group">
+
+          <span class="control-label">Lead ID</span>
+
+          <input type="number" class="lead-id-input" id="leadIdStart" placeholder="e.g. 8173" min="1">
+
+        </div>
+
+        <div class="control-group">
+
+          <span class="control-label">Language</span>
+
+          <div class="lang-select-wrapper">
+
+            <select class="lang-select" id="langSelect">
+
+              <option value="English">English</option>
+
+              <option value="Hindi">Hindi</option>
+
+              <option value="Tamil">Tamil</option>
+
+              <option value="Malayalam">Malayalam</option>
+
+            </select>
+
+          </div>
+
+        </div>
+
+        <div class="ai-key-control" style="display:none;">
+          <span class="api-key-status ok" id="apiKeyStatus">✓ AI Active</span>
+        </div>
+
+        <button class="btn btn-primary" id="btnCopy" disabled onclick="copyData()" style="display:none">
+
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+
+            <path
+
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+
+          </svg>
+
+          Copy All Data
+
+        </button>
+
+        <button class="btn btn-primary" id="btnExport" disabled onclick="exportToExcel()" style="display:none">
+
+          <svg fill="currentColor" width="14" height="14" viewBox="0 0 24 24">
+
+            <path
+
+              d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 9l-2 3-2-3H6.5l3.25 4.5L6.5 20h2.5l2-3 2 3h2.5l-3.25-4.5L16 11h-3zm4 9H6V4h7v5h5v11z" />
+
+          </svg>
+
+          Export Excel
+
+        </button>
+
+        <button class="btn btn-secondary" id="btnValidateAI" disabled onclick="validateDispositionsWithLLM()" style="display:none">
+
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+
+          </svg>
+
+          Validate with AI
+
+        </button>
+
+        <button class="btn btn-secondary" id="btnReset" onclick="resetAll()" style="display:none">Reset</button>
+
+        <span class="status-msg" id="globalStatus"></span>
+
+      </div>
+
+    </section>
+
+
+
+
+
+      <!-- AI Validation Status Bar (shown during AI validation) -->
+
+      <div id="aiValidationStatus" class="ai-status-bar" style="display:none;">
+
+        <div class="ai-status-row">
+
+          <div class="ai-status-info">
+
+            <span class="ai-status-msg" id="aiStatusMsg">AI validating dispositions…</span>
+
+            <span class="ai-status-badge" id="aiStatusBatch"></span>
+
+            <span class="ai-status-badge corrected" id="aiStatusCorrected" style="display:none;"></span>
+
+            <span class="ai-status-time" id="aiStatusElapsed"></span>
+
+          </div>
+
+          <div class="ai-status-actions" id="aiStatusActions">
+
+            <button class="ai-status-btn cancel" id="aiStatusCancel" onclick="cancelAiValidation()">Cancel</button>
+
+          </div>
+
+        </div>
+
+        <div class="ai-status-track">
+
+          <div class="ai-status-fill" id="aiStatusFill" style="width:0%;"></div>
+
+        </div>
+
+      </div>
+
+    <section class="results-panel">
+
+      <div class="section-head">
+
+        <div>
+
+          <div class="eyebrow">Step 2</div>
+
+          <div class="section-title">Review and hand off</div>
+
+        </div>
+
+        <div class="section-note">After processing, use the stats and preview tables for spot checks before copying or
+
+          exporting.</div>
+
+      </div>
+
+
+
+      <div class="empty-state">
+
+        <div>
+
+          <strong>Waiting for a processed batch</strong>
+
+          <p>Upload both files and run processing. The stats, quality checks, and preview tables will appear here.</p>
+
+        </div>
+
+        <div class="empty-steps" aria-hidden="true">
+
+          <span>Upload</span>
+
+          <span>Process</span>
+
+          <span>Review</span>
+
+          <span>Export</span>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- Stats Bar -->
+
+      <div class="stats-bar" id="statsBar">
+
+        <div class="stat-card">
+
+          <div class="stat-label">Total Leads</div>
+
+          <div class="stat-val blue" id="sTotal">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Connected</div>
+
+          <div class="stat-val green" id="sConnected">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Not Connected</div>
+
+          <div class="stat-val amber" id="sNotConn">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">AI-Ready</div>
+
+          <div class="stat-val green" id="sAiReady">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Skipped (no summary)</div>
+
+          <div class="stat-val gray" id="sSkipped">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Excluded (Terminal)</div>
+
+          <div class="stat-val purple" id="sExcluded">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">With Recording</div>
+
+          <div class="stat-val blue" id="sRecording">0</div>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- Data Quality / Reconciliation -->
+
+      <div class="quality-card" id="qualityCard" style="display:none">
+
+        <div class="quality-header">
+
+          <div>
+
+            <div class="eyebrow">Data quality</div>
+
+            <div class="quality-title" id="qualityTitle">Batch checks</div>
+
+            <div class="quality-subtitle" id="qualitySubtitle">Validation and reconciliation checks appear after
+
+              processing.</div>
+
+          </div>
+
+          <button class="btn btn-secondary" onclick="copyQualityReport()" id="btnCopyQuality"
+
+            style="padding: 0.25rem 0.6rem; font-size: 0.75rem; height: auto;">Copy Report</button>
+
+        </div>
+
+        <div class="quality-grid" id="qualityMetrics"></div>
+
+        <div class="quality-sections">
+
+          <div class="quality-list">
+
+            <div class="quality-list-title">Warnings</div>
+
+            <div id="qualityWarnings"></div>
+
+          </div>
+
+          <div class="quality-list">
+
+            <div class="quality-list-title">Reconciliation samples</div>
+
+            <div id="qualitySamples"></div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- Table -->
+
+      <div class="table-wrapper" id="tableWrapper">
+
+        <div class="table-header">
+
+          <div class="table-title">Output Preview</div>
+
+          <div class="table-caption" id="tableCaption">0 rows</div>
+
+        </div>
+
+        <div class="table-scroll">
+
+            <table id="outputTable">
+
+              <thead>
+
+                <tr id="outputHead"></tr>
+
+              </thead>
+
+            <tbody id="outputBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- Converted Preview -->
+
+      <div class="table-wrapper" id="convertedTableWrapper" style="display:none; margin-top: 2rem;">
+
+        <div class="table-header">
+
+          <div class="table-title">Converted Leads Preview</div>
+
+          <button class="btn btn-primary" id="btnCopyConverted" onclick="copyConvertedData()"
+
+            style="padding: 0.25rem 0.6rem; font-size: 0.75rem; height: auto;">Copy Converted</button>
+
+        </div>
+
+        <div class="table-scroll">
+
+           <table id="convertedTable">
+
+              <thead>
+
+                <tr>
+
+                  <th>LEAD_ID</th>
+
+                  <th>PERSON_NAME</th>
+
+                  <th>PHONE_NUMBER</th>
+
+                  <th>VEHICLE_MODEL</th>
+
+                  <th>LANGUAGE</th>
+
+                  <th>DISPOSITION_DETAILS</th>
+
+                  <th>SUMMARY</th>
+
+                  <th>CALL_DATE</th>
+
+                  <th>LOCATION</th>
+
+                </tr>
+
+              </thead>
+
+            <tbody id="convertedBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- Test Drive Completed Preview -->
+
+      <div class="table-wrapper" id="testDriveTableWrapper" style="display:none; margin-top: 2rem;">
+
+        <div class="table-header">
+
+          <div class="table-title">Test Drive Completed Preview</div>
+
+          <button class="btn btn-primary" id="btnCopyTestDrive" onclick="copyTestDriveData()"
+
+            style="padding: 0.25rem 0.6rem; font-size: 0.75rem; height: auto;">Copy Test Drive</button>
+
+        </div>
+
+        <div class="table-scroll">
+
+          <table id="testDriveTable">
+
+            <thead>
+
+              <tr>
+
+                <th>LEAD_ID</th>
+
+                <th>PHONE_NUMBER</th>
+
+                <th>VEHICLE_MODEL</th>
+
+                <th>LANGUAGE</th>
+
+                <th>CALL_DATE</th>
+
+                <th>SUMMARY</th>
+
+              </tr>
+
+            </thead>
+
+            <tbody id="testDriveBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+
+  <!-- Guide Overlay -->
+
+  <div class="guide-overlay" id="guideOverlay">
+
+    <div class="guide-highlight" id="guideHighlight"></div>
+
+    <svg class="guide-arrow-svg" id="guideArrowSvg"></svg>
+
+    <div class="guide-card" id="guideCard">
+
+      <div class="guide-card-title" id="guideCardTitle"></div>
+
+      <div class="guide-card-desc" id="guideCardDesc"></div>
+
+      <div class="guide-card-actions">
+
+        <div>
+
+          <button class="guide-btn" onclick="prevGuideStep()" id="guidePrevBtn">← Prev</button>
+
+          <button class="guide-btn" onclick="nextGuideStep()" id="guideNextBtn">Next →</button>
+
+        </div>
+
+        <button class="guide-btn primary" onclick="exitGuide()">Exit <span style="font-size:0.65rem;opacity:0.6;">(Esc)</span></button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+
+  <footer>AutoNage - Pre-Sales Sync v2 - AutoEngage to Zoho Master Sheet</footer>
+
+
+
+  <script>
+
+    // ─── STATE ───────────────────────────────────────────────────────────────────
+
+    let rawFile1 = null;
+
+    let rawFile2 = null;
+
+    let processedData = [];
+
+    let qualityReport = null;
+
+    let isProcessing = false;
+
+    let aiValidationController = null;
+
+
+
+    function cancelAiValidation() {
+
+      if (aiValidationController) {
+
+        aiValidationController.abort();
+
+        // Don't null here — hideAiStatusBar detects signal.aborted and cleans up
+
+      }
+
+    }
+
+
+
+
+
+    // ─── PRIORITY TABLE ───────────────────────────────────────────────────────────
+
+    const BUSINESS_CONFIG = {
+
+      dispositionPriority: {
+
+        'test drive booked': 10,
+
+        'converted': 10,
+
+        'not interested': 9,
+
+        'dnd': 9,
+
+        'wrong number': 9,
+
+        'interested': 8,
+
+        'callback requested': 6,
+
+        'call back': 6,
+
+        'busy': 4,
+
+        'not connected': 3,
+
+        'no revert': 3,
+
+        'user did not speak': 2,
+
+      },
+
+      terminalThreshold: 9,
+
+      connectedDispositions: ['contacted', 'reached', 'engaged', 'converted'],
+
+      notConnectedDispositions: ['attempted', 'busy'],
+
+      seatingRules: [
+
+        { matches: ['basalt'], value: '5 Seater' },
+
+        { matches: ['aircross', 'c3'], value: '5 Seater & 7 Seater' },
+
+        { matches: ['meridian', 'jeep'], value: '5 Seater & 7 Seater' },
+
+      ],
+
+      validation: {
+
+        file1RequiredGroups: [
+
+          { label: 'Phone', candidates: ['phone_number', 'phone', 'mobile'] },
+
+          { label: 'Disposition', candidates: ['disposition'] },
+
+          { label: 'Updated date', candidates: ['updated', 'call_date'] },
+
+        ],
+
+        file1RecommendedGroups: [
+
+          { label: 'Full name', candidates: ['person_name', 'full_name', 'name'] },
+
+          { label: 'City', candidates: ['city'] },
+
+          { label: 'Campaign ID', candidates: ['campaign_id'] },
+
+          { label: 'Lead source', candidates: ['lead_source'] },
+
+          { label: 'Summary detail', candidates: ['disposition_detail'] },
+
+          { label: 'Lead summary', candidates: ['lead_summary'] },
+
+          { label: 'Model', candidates: ['name', 'model_preference', 'interested_vehicle_name'] },
+
+          { label: 'Cohort', candidates: ['campaign_objective_name'] },
+
+          { label: 'Session ID', candidates: ['last_session_id', 'session_id'] },
+
+        ],
+
+        file2RecommendedGroups: [
+
+          { label: 'Phone', candidates: ['phone_number', 'phone', 'mobile', 'contact', 'contact_number'] },
+
+          { label: 'Date/time', candidates: ['created', 'start_time', 'date', 'timestamp', 'call_date'] },
+
+          { label: 'Summary', candidates: ['summary', 'call_summary', 'conversation_summary', 'notes'] },
+
+          { label: 'Recording', candidates: ['call_recording', 'recording', 'recording_url', 'call_url', 'audio_url'] },
+
+          { label: 'Sentiment', candidates: ['sentiment_score', 'sentiment', 'score'] },
+
+          { label: 'Channel', candidates: ['channel', 'call_channel', 'communication_channel'] },
+
+          { label: 'History', candidates: ['history', 'session_history', 'transcript', 'conversation_history', 'chat_history', 'messages'] },
+
+          { label: 'Duration', candidates: ['duration', 'call_duration', 'recording_duration', 'talk_time'] },
+
+        ],
+
+      },
+
+    };
+
+    const DISPOSITION_PRIORITY = BUSINESS_CONFIG.dispositionPriority;
+
+    const TERMINAL_THRESHOLD = BUSINESS_CONFIG.terminalThreshold;
+
+    const CONNECTED_SET = new Set(BUSINESS_CONFIG.connectedDispositions);
+
+    const NOT_CONNECTED_SET = new Set(BUSINESS_CONFIG.notConnectedDispositions);
+
+
+
+    // ─── DEALER CONFIGS ────────────────────────────────────────────────────────────
+
+    const COMMON_COLUMNS = [
+
+      { header: 'Lead_Id', key: 'lead_id' },
+
+      { header: 'Full_Name', key: 'full_name' },
+
+      { header: 'Phone', key: 'phone' },
+
+      { header: 'City', key: 'city' },
+
+      { header: 'PIncode', key: 'pincode' },
+
+      { header: 'Language', key: 'language' },
+
+      { header: 'Lead_Source', key: 'lead_source' },
+
+      { header: 'Cohort', key: 'cohort' },
+
+      { header: 'Campaign_ID', key: 'campaign_id' },
+
+      { header: 'Last_session_id', key: 'last_session_id' },
+
+      { header: 'Call_Triggered', key: 'call_triggered' },
+
+      { header: 'Outcome', key: 'outcome' },
+
+      { header: 'Disposition', key: 'disposition' },
+
+      { header: 'Summary', key: 'summary' },
+
+      { header: 'Disposition_detail', key: 'disposition_detail' },
+
+      { header: 'Manual_Disposition_detail', key: 'manual_disposition_detail' },
+
+      { header: 'Call_Date', key: 'call_date' },
+
+      { header: 'Number_of_attempts', key: 'num_attempts' },
+
+      { header: 'Sentiment', key: 'sentiment' },
+
+      { header: 'Recordings', key: 'recordings' },
+
+      { header: 'Call_Duration', key: 'call_duration' },
+
+      { header: 'Model', key: 'model' },
+
+      { header: 'Seating', key: 'seating' },
+
+    ];
+
+
+
+    const STELLANTIS_COLUMNS = [
+
+      { header: 'Lead_ID+A1', key: 'lead_id' },
+
+      { header: 'Full_Name', key: 'full_name' },
+
+      { header: 'Phone', key: 'phone' },
+
+      { header: 'City', key: 'city' },
+
+      { header: 'PIncode', key: 'pincode' },
+
+      { header: 'Language', key: 'language' },
+
+        { header: "Disposition_Detail_AI", key: "manual_disposition_detail" },
+
+      { header: 'Source', key: 'lead_source' },
+
+      { header: 'Cohort', key: 'cohort' },
+
+      { header: 'Campaign_ID', key: 'campaign_id' },
+
+      { header: 'Call Triggered', key: 'call_triggered' },
+
+      { header: 'Outcome', key: 'outcome' },
+
+      { header: 'Disposition', key: 'disposition' },
+
+      { header: 'Disposition_Detail', key: 'disposition_detail' },
+
+      { header: 'Conversions', key: 'conversion' },
+
+      { header: 'SUMMARY', key: 'summary' },
+
+      { header: 'Call_Date', key: 'call_date' },
+
+      { header: 'Number of atempts', key: 'num_attempts' },
+
+      { header: 'SENTIMENT', key: 'sentiment' },
+
+      { header: 'Session_id', key: 'last_session_id' },
+
+      { header: 'Channel', key: 'channel' },
+
+      { header: 'Model', key: 'model' },
+
+      { header: 'Seating', key: 'seating' },
+
+    ];
+
+
+
+    const DEALER_CONFIGS = {
+
+      anant_cars:      { name: 'Anant Cars',      summarySource: 'lead_summary',      columns: COMMON_COLUMNS },
+
+      anant_wa:        { name: 'Anant WA',        summarySource: 'lead_summary',      columns: [
+        { header: 'Lead_ID', key: 'lead_id' },
+        { header: 'Full_Name', key: 'full_name' },
+        { header: 'Phone', key: 'phone' },
+        { header: 'City', key: 'city' },
+        { header: 'Pincode', key: 'pincode' },
+        { header: 'Language', key: 'language' },
+        { header: 'Lead_Source', key: 'lead_source' },
+        { header: 'Cohort', key: 'cohort' },
+        { header: 'Campaign_ID', key: 'campaign_id' },
+        { header: 'Call_Triggered', key: 'call_triggered' },
+        { header: 'Outcome', key: 'outcome' },
+        { header: 'Disposition', key: 'disposition' },
+        { header: 'SUMMARY', key: 'summary' },
+        { header: 'Conversion', key: 'conversion' },
+        { header: 'History', key: 'session_history' },
+        { header: 'Call_Date', key: 'call_date' },
+        { header: 'No. of Attempts', key: 'num_attempts' },
+        { header: 'SENTIMENT', key: 'sentiment' },
+        { header: 'Session ID', key: 'last_session_id' },
+        { header: 'Channel', key: 'channel' },
+        { header: 'Model', key: 'model' },
+        { header: 'Seating', key: 'seating' },
+      ]},
+
+      chennai_ev:      { name: 'ChennaiEV',        summarySource: 'lead_summary',      columns: COMMON_COLUMNS },
+      singhal:         { name: 'Singhal',          summarySource: 'lead_summary',      columns: COMMON_COLUMNS },
+
+      fortune_hyryder: { name: 'Fortune Hyryder',  summarySource: 'lead_summary',      columns: COMMON_COLUMNS },
+
+      fortune_honda:   { name: 'Fortune Honda',    summarySource: 'lead_summary',      columns: COMMON_COLUMNS },
+
+      stellantis_wa:   { name: 'Stellantis WA',    summarySource: 'lead_summary',      columns: STELLANTIS_COLUMNS },
+
+      default:         { name: 'Default',          summarySource: 'disposition_detail', columns: COMMON_COLUMNS },
+
+    };
+
+
+
+    /* ═══════════════════════════════════════════════════════════════════════
+
+       LLM VALIDATION — PRESALES DISPOSITIONS
+
+       ═══════════════════════════════════════════════════════════════════════ */
+
+    function getConfigNumber(key, fallback) {
+      var cfg = window.JEJO_CONFIG || {};
+      var value = Number(cfg[key]);
+      return Number.isFinite(value) && value > 0 ? value : fallback;
+    }
+
+    function getLlmModel() {
+      var cfg = window.JEJO_CONFIG || {};
+      return cfg.grydModel || 'gcp-gemini-3.1-flash-lite-preview';
+    }
+
+    function isProxyEndpoint() { return true; }
+
+    var LLM_DISPOSITION_BATCH_SIZE = getConfigNumber('llmDispositionBatchSize', getConfigNumber('llmBatchSize', 6));
+    var LLM_DISPOSITION_MAX_CONCURRENT = getConfigNumber('llmDispositionMaxConcurrent', 1);
+    var LLM_DISPOSITION_MAX_RETRIES = getConfigNumber('llmDispositionMaxRetries', getConfigNumber('llmMaxRetries', 1));
+    var LLM_DISPOSITION_TIMEOUT_MS = getConfigNumber('llmDispositionTimeoutMs', getConfigNumber('llmRequestTimeoutMs', 90000));
+    var LLM_PROMPT_CHAR_LIMIT = getConfigNumber('llmDispositionPromptCharLimit', getConfigNumber('llmPromptCharLimit', 2500));
+    var LLM_DISPOSITION_MAX_TOKENS = getConfigNumber('llmDispositionMaxOutputTokens', getConfigNumber('llmMaxOutputTokens', 1800));
+
+    function getApiEndpoint() {
+      var cfg = window.JEJO_CONFIG || {};
+      return (cfg.grydEndpoint || 'http://localhost:3456') + '/gryd/v1/chat/completions';
+    }
+
+    function getApiKey() { return 'GRYD_ACTIVE'; }
+
+
+
+
+
+    /**
+
+     * Sanitize user-provided text before inserting into an LLM prompt.
+
+     * Prevents prompt injection by:
+
+     * 1. Replacing double quotes with single quotes to prevent string boundary breaking
+
+     * 2. Stripping control characters (except newlines/tabs)
+
+     * 3. Removing known prompt injection keywords
+
+     * 4. Wrapping in clearly marked data boundaries
+
+     */
+
+    function sanitizeForPrompt(text) {
+
+      if (!text) return '';
+
+      var s = String(text);
+
+      // Strip control characters except \n, \t, \r
+
+      s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+      // Replace double quotes with single quotes to prevent JSON/string boundary breaking
+
+      s = s.replace(/"/g, "'");
+
+      // Limit length to prevent token flooding
+
+      if (s.length > LLM_PROMPT_CHAR_LIMIT) s = s.substring(0, LLM_PROMPT_CHAR_LIMIT) + '...[truncated]';
+
+      return s;
+
+    }
+
+
+
+    function hashStr(str) {
+
+      var h = 0;
+
+      for (var i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; }
+
+      return 'h' + Math.abs(h).toString(36);
+
+    }
+
+
+
+    var ALL_DISPOSITIONS = {
+
+      // ── Pre-Sales ──
+
+      "Voicemail": "If the customer has asked to leave a message or voicemail.",
+
+      "Rejected": "If the customer has rejected the offer or to even speak with the agent.",
+
+      "Language barrier": "If the customer has asked to speak in a different language and did not finish the conversation or intent of the campaign.",
+
+      "Is not decision maker": "the customer said they are not the right person to speak to about this in their family.",
+
+      "Will decide later, will purchase within 15 days": "The customer said they would decide to buy the vehicle within 15 days.",
+
+      "Will decide later, will purchase within 1 to 3 months": "The customer said they would decide to buy the vehicle within 1 to 3 months.",
+
+      "Will decide later, exploring options": "The customer said they will decide on the purchase of the vehicle at a later time and are only exploring all their options now.",
+
+      "No buying intent": "the customer Do not want to purchase a car. Neither are the interested in the car.",
+
+      "Just Exploring": "the customer Only want to know about the vehicle but do not show intent to buy.",
+
+      "Will call showroom themselves": "the customer will contact the dealership or showroom themselves.",
+
+      "Requested Callback": "the customer Asked to call back at a later date and or time.",
+
+      "Purchased elsewhere": "the customer Already purchased a vehicle elsewhere.",
+
+      "Enquired for Pricing": "the customer by themselves asked for the price of the vehicle.",
+
+      "Enquired for Specifications": "the customer by themselves asked for the specifications of the vehicle.",
+
+      "Enquired for Test Drive": "the customer by themselves asked for a test drive of the vehicle.",
+
+      "Enquired for Showroom Visit": "the customer by themselves asked for a showroom visit of the vehicle.",
+
+      "Enquired for Brochure": "the customer by themselves asked for a brochure of the vehicle.",
+
+      "Enquired for Dealership Details": "the customer by themselves asked for dealership details.",
+
+      "Enquired for Others": "the customer by themselves asked for other details not listed above.",
+
+      "Comparing with another brand": "The customer by themselves is comparing the vehicle with another brand.",
+
+      "Customer Busy": "The customer was busy and could not speak at that moment.",
+
+      "Call Disconnected": "The customer by themselves has disconnected the call.",
+
+      "Others": "All other disposition details not listed above.",
+
+      "General Inquiry": "the customer is Asking generic questions not specific to the purpose of the campaign or the vehicle.",
+
+      "Not Interested": "the customer Specifically said they are not interested in the vehicle.",
+
+      "Follow Up Required": "the customer Needs a follow up to convince them to complete the campaign objective.",
+
+      "No Response": "the customer did not say anything at all.",
+
+      "Lost to Competition": "the customer Bought a competitor brands vehicle.",
+
+      "Test Drive Completed": "the customer Already completed a test drive.",
+
+      "Invalid Lead": "the customer Not a valid lead.",
+
+      "Purchase Postponed": "the customer indicates that the Purchase has been postponed",
+
+      "Audio Issue": "There was issues with hearing the customer or the agent for either party.",
+
+      "Showroom Visit Planned": "the customer Already booked a showroom visit.",
+
+      "Converted": "The customer completes the purpose of the campaign and provides the necessary information.",
+
+      // ── Additional ──
+
+      "Talk to Human": "The customer asked to speak to a human agent or customer executive instead of the digital assistant.",
+
+      "Interested in another car same dealership": "The customer is interested in a different vehicle model from the same dealership."
+
+    };
+
+
+
+    function getActiveDealerConfig() {
+
+      var key = document.getElementById('dealerSelect').value;
+
+      return DEALER_CONFIGS[key] || DEALER_CONFIGS.default;
+
+    }
+
+
+
+    function handleDealerChange() {
+
+      var cfg = getActiveDealerConfig();
+
+      setStatus('globalStatus', cfg.name + ' selected.', '');
+
+      renderTableHeader();
+
+      if (processedData.length) renderTable(processedData);
+
+    }
+
+
+
+    function renderTableHeader() {
+
+      var cfg = getActiveDealerConfig();
+
+      var head = document.getElementById('outputHead');
+
+      head.innerHTML = cfg.columns.map(function(col) {
+
+        if (col.key === 'full_name') return '<th class="th-sortable" data-sort-key="full_name" onclick="toggleSort(\'full_name\')">' + esc(col.header) + '</th>';
+
+        if (col.key === 'phone') return '<th class="th-sortable" data-sort-key="phone" onclick="toggleSort(\'phone\')">' + esc(col.header) + '</th>';
+
+        if (col.key === 'disposition') return '<th class="th-sortable" data-sort-key="disposition" onclick="toggleSort(\'disposition\')">' + esc(col.header) + '</th>';
+
+        return '<th>' + esc(col.header) + '</th>';
+
+      }).join('');
+
+    }
+
+
+
+    function getDispositionPriority(d) {
+
+      if (!d) return 1;
+
+      return DISPOSITION_PRIORITY[d.trim().toLowerCase()] ?? 1;
+
+    }
+
+
+
+    // ─── PHONE NORMALIZATION ──────────────────────────────────────────────────────
+
+    function normalizePhone(raw) {
+
+      if (!raw) return null;
+
+      let s = String(raw).trim();
+
+      if (/^\d[\d.]*[eE][+\-]?\d+$/.test(s)) {
+
+        s = String(Math.round(parseFloat(s)));
+
+      }
+
+      const digits = s.replace(/\D/g, '');
+
+      if (!digits) return null;
+
+      if (digits.startsWith('91') && digits.length === 12) return digits.slice(2);
+
+      if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
+
+      if (digits.length === 10) return digits;
+
+      if (digits.startsWith('91') && digits.length >= 12) return digits.slice(digits.length - 10);
+
+      return null;
+
+    }
+
+
+
+    function isPhoneLike(val) {
+
+      return /^\+?[\d\s\-()]{10,15}$/.test(String(val).trim());
+
+    }
+
+
+
+    // ─── DATE PARSING ──────────────────────────────────────────────────────────────
+
+    function parseAutoEngageDate(str) {
+
+      if (!str) return null;
+
+      const s = String(str).trim();
+
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})\s*(am|pm)?/i);
+
+      if (m) {
+
+        let [, dd, mm, yyyy, hh, min, sec, ampm] = m;
+
+        dd = parseInt(dd, 10); mm = parseInt(mm, 10); yyyy = parseInt(yyyy, 10);
+
+        hh = parseInt(hh, 10); min = parseInt(min, 10); sec = parseInt(sec, 10);
+
+        if (ampm) {
+
+          ampm = ampm.toLowerCase();
+
+          if (ampm === 'pm' && hh !== 12) hh += 12;
+
+          if (ampm === 'am' && hh === 12) hh = 0;
+
+        }
+
+        return new Date(yyyy, mm - 1, dd, hh, min, sec);
+
+      }
+
+      const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+      if (dmy) {
+
+        const dd = parseInt(dmy[1], 10);
+
+        const mm = parseInt(dmy[2], 10);
+
+        const yyyy = parseInt(dmy[3], 10);
+
+        if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+
+          return new Date(yyyy, mm - 1, dd);
+
+        }
+
+      }
+
+      const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+
+      if (iso) {
+
+        const yyyy = parseInt(iso[1], 10);
+
+        const mm = parseInt(iso[2], 10);
+
+        const dd = parseInt(iso[3], 10);
+
+        const hh = parseInt(iso[4] || '0', 10);
+
+        const min = parseInt(iso[5] || '0', 10);
+
+        const sec = parseInt(iso[6] || '0', 10);
+
+        if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+
+          return new Date(yyyy, mm - 1, dd, hh, min, sec);
+
+        }
+
+      }
+
+      return null;
+
+    }
+
+
+
+    function formatCallDate(dateObj) {
+
+      if (!dateObj) return '';
+
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+
+      const yyyy = dateObj.getFullYear();
+
+      return `${dd}/${mm}/${yyyy}`;
+
+    }
+
+
+
+    function isDateStr(val) {
+
+      return /\d{1,2}\/\d{1,2}\/\d{4}/.test(String(val));
+
+    }
+
+
+
+    function ordinalSuffix(n) {
+
+      const s = ['th', 'st', 'nd', 'rd'];
+
+      const v = n % 100;
+
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+
+    }
+
+
+
+    function formatTime12(dateObj) {
+
+      if (!dateObj) return '';
+
+      let h = dateObj.getHours();
+
+      const m = dateObj.getMinutes();
+
+      const ampm = h >= 12 ? 'pm' : 'am';
+
+      h = h % 12 || 12;
+
+      return `${h}:${String(m).padStart(2, '0')}${ampm}`;
+
+    }
+
+
+
+    const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+
+      'July', 'August', 'September', 'October', 'November', 'December'];
+
+
+
+    // ─── FILE READING ──────────────────────────────────────────────────────────────
+
+    function readFileAsArrayBuffer(file) {
+
+      return new Promise((resolve, reject) => {
+
+        const reader = new FileReader();
+
+        reader.onload = e => resolve(e.target.result);
+
+        reader.onerror = () => reject(new Error('Failed to read file'));
+
+        reader.readAsArrayBuffer(file);
+
+      });
+
+    }
+
+
+
+    function parseSheet(ab) {
+
+      const wb = XLSX.read(ab, { type: 'array', raw: true, cellText: false, cellDates: false });
+
+      const ws = wb.Sheets[wb.SheetNames[0]];
+
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+
+      if (rows.length < 2) return [];
+
+      const headers = rows[0].map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+
+      const result = [];
+
+      for (let i = 1; i < rows.length; i++) {
+
+        const row = rows[i];
+
+        const obj = {};
+
+        headers.forEach((h, j) => { obj[h] = cellToString(row[j]); });
+
+        obj.__raw = row.map(cellToString);
+
+        result.push(obj);
+
+      }
+
+      return result;
+
+    }
+
+
+
+    function cellToString(val) {
+
+      if (val === undefined || val === null || val === '') return '';
+
+      if (typeof val === 'number') {
+
+        if (Number.isInteger(val)) return String(val);
+
+        if (val > 999999 && Math.abs(val - Math.round(val)) < 0.01) return String(Math.round(val));
+
+        return String(val);
+
+      }
+
+      let s = String(val).trim();
+
+      if (/^\d[\d.]*[eE][+\-]?\d+$/.test(s)) {
+
+        const n = parseFloat(s);
+
+        if (Number.isFinite(n) && n > 999999) return String(Math.round(n));
+
+      }
+
+      return s;
+
+    }
+
+
+
+    // ─── ROBUST COLUMN DETECTION (File 2 column-shift bug fix) ────────────────────
+
+    function detectPhones(obj) {
+
+      const phones = new Set();
+
+      const exactNames = ['phone_number', 'phone', 'mobile', 'contact', 'contact_number'];
+
+      for (const c of exactNames) {
+
+        if (obj[c]) {
+
+          const n = normalizePhone(obj[c]);
+
+          if (n) phones.add(n);
+
+        }
+
+      }
+
+      if (phones.size > 0) return Array.from(phones);
+
+      const raw = Array.isArray(obj.__raw) ? obj.__raw : Object.values(obj);
+
+      for (const val of raw) {
+
+        if (!val) continue;
+
+        const s = String(val).trim();
+
+        if (isPhoneLike(s)) {
+
+          const n = normalizePhone(s);
+
+          if (n) phones.add(n);
+
+        }
+
+        if (s.length > 10) {
+
+          const matches = s.match(/\+?(?:91|0)?[\s\-]?\d{10,12}\b/g);
+
+          if (matches) {
+
+            for (const m of matches) {
+
+              const n = normalizePhone(m);
+
+              if (n && isLikelyIndianMobile(n)) phones.add(n);
+
+            }
+
+          }
+
+        }
+
+      }
+
+      return Array.from(phones);
+
+    }
+
+
+
+    function detectRecording(obj) {
+
+      function cleanLink(str) {
+
+        if (!str || typeof str !== 'string') return null;
+
+        let s = str.trim();
+
+        const low = s.toLowerCase();
+
+        if (low === 'null' || low === 'n/a' || low === 'none' || low === '-' || s === '') return null;
+
+        return s;
+
+      }
+
+
+
+      function extractUrl(str) {
+
+        if (!str || typeof str !== 'string') return null;
+
+        const m = str.match(/(?:https?|s3):\/\/[^\s"'<>\\[\]]+/i);
+
+        return m ? m[0] : null;
+
+      }
+
+
+
+      const exactNames = ['call_recording', 'recording', 'recording_url', 'call_url',
+
+        'audio_url', 'audio', 'media_url', 'record_url', 'call_record'];
+
+      for (const c of exactNames) {
+
+        if (obj[c]) {
+
+          const val = cleanLink(obj[c]);
+
+          if (val) {
+
+            const url = extractUrl(val);
+
+            return url || val;
+
+          }
+
+        }
+
+      }
+
+
+
+      for (const [k, v] of Object.entries(obj)) {
+
+        if (!v || k === '__raw') continue;
+
+        if (/record|audio|media/i.test(k)) {
+
+          const clean = cleanLink(v);
+
+          if (!clean) continue;
+
+          const url = extractUrl(clean);
+
+          if (url) return url;
+
+          if (clean.length > 5 && !clean.includes('{')) return clean;
+
+        }
+
+      }
+
+
+
+      if (Array.isArray(obj.__raw)) {
+
+        let bestGuess = null;
+
+        for (const val of obj.__raw) {
+
+          const s = String(val || '').trim();
+
+          const url = extractUrl(s);
+
+          if (url) {
+
+            const lower = url.toLowerCase();
+
+            if (lower.includes('cloudphone') || lower.includes('record') ||
+
+              lower.includes('audio') || lower.includes('.mp3') || lower.includes('.wav')) {
+
+              return url;
+
+            }
+
+            if (url.length > 35 && !bestGuess) bestGuess = url;
+
+          } else if (s.includes('.mp3') || s.includes('.wav') || s.includes('cloudphone')) {
+
+            return s;
+
+          }
+
+        }
+
+        if (bestGuess) return bestGuess;
+
+      }
+
+
+
+      return '';
+
+    }
+
+
+
+    function detectDate(obj) {
+
+      const candidates = ['created', 'date', 'start_time', 'timestamp', 'call_date'];
+
+      for (const c of candidates) {
+
+        if (obj[c] && isDateStr(obj[c])) return obj[c];
+
+      }
+
+      for (const val of Object.values(obj)) {
+
+        if (typeof val === 'string' && isDateStr(val)) return val;
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function detectSummary(obj) {
+
+      const candidates = ['summary', 'call_summary', 'conversation_summary', 'notes'];
+
+      for (const c of candidates) {
+
+        if (obj[c] && obj[c].length > 3) return obj[c];
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function detectSentiment(obj) {
+
+      const candidates = ['sentiment_score', 'sentiment', 'score'];
+
+      for (const c of candidates) {
+
+        if (obj[c] !== undefined && obj[c] !== '') return obj[c];
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function detectChannel(obj) {
+
+      const candidates = ['channel', 'call_channel', 'communication_channel'];
+
+      for (const c of candidates) {
+
+        if (obj[c] !== undefined && obj[c] !== '') return String(obj[c]).trim();
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function detectDuration(obj) {
+
+      const candidates = ['duration', 'call_duration', 'recording_duration', 'talk_time'];
+
+      for (const c of candidates) {
+
+        if (obj[c] !== undefined && obj[c] !== '') return String(obj[c]).trim();
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function detectSessionId(obj) {
+
+      const candidates = ['session_id', 'id', 'last_session_id'];
+
+      for (const c of candidates) {
+
+        if (obj[c] !== undefined && obj[c] !== '') return String(obj[c]).trim();
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function detectSessionDisposition(obj) {
+
+      const candidates = ['disposition_detail', 'disposition', 'call_disposition'];
+
+      for (const c of candidates) {
+
+        if (obj[c] !== undefined && obj[c] !== '') return String(obj[c]).trim();
+
+      }
+
+      return '';
+
+    }
+
+
+
+    // ─── SEATING DERIVATION ───────────────────────────────────────────────────────
+
+    function deriveSeating(seating, model) {
+
+      if (seating && seating.trim() !== '') return seating.trim();
+
+      if (!model) return '';
+
+      const m = model.toLowerCase();
+
+      for (const rule of BUSINESS_CONFIG.seatingRules) {
+
+        if (rule.matches.some(term => m.includes(term))) return rule.value;
+
+      }
+
+      return '';
+
+    }
+
+
+
+    // â”€â”€â”€ DATA QUALITY / RECONCILIATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    function getColumnNames(rows) {
+
+      const cols = new Set();
+
+      for (const row of rows) {
+
+        Object.keys(row || {}).forEach(k => {
+
+          if (k !== '__raw') cols.add(k);
+
+        });
+
+        if (cols.size) break;
+
+      }
+
+      return cols;
+
+    }
+
+
+
+    function getMissingColumnGroups(rows, groups) {
+
+      const cols = getColumnNames(rows);
+
+      return groups
+
+        .filter(group => !group.candidates.some(candidate => cols.has(candidate)))
+
+        .map(group => group.label);
+
+    }
+
+
+
+    function addQualityWarning(warnings, level, title, detail) {
+
+      warnings.push({ level, title, detail });
+
+    }
+
+
+
+    function isLikelyIndianMobile(phone) {
+
+      return /^[6-9]\d{9}$/.test(String(phone || ''));
+
+    }
+
+
+
+    function buildQualityReport(rows1, rows2, allLeads, sessionGroups, sessionMap, output, callTriggered) {
+
+      const validation = BUSINESS_CONFIG.validation;
+
+      const leadPhoneCounts = new Map();
+
+      const invalidLeadRows = [];
+
+
+
+      rows1.forEach((row, index) => {
+
+        const rawPhone = row['phone_number'] || row['phone'] || row['mobile'] || '';
+
+        const phone = normalizePhone(rawPhone);
+
+        if (!phone) {
+
+          invalidLeadRows.push({
+
+            rowNumber: index + 2,
+
+            name: row['person_name'] || '',
+
+            rawPhone: rawPhone || '(blank)'
+
+          });
+
+          return;
+
+        }
+
+        leadPhoneCounts.set(phone, (leadPhoneCounts.get(phone) || 0) + 1);
+
+      });
+
+
+
+      const duplicatePhones = Array.from(leadPhoneCounts.entries())
+
+        .filter(([, count]) => count > 1)
+
+        .map(([phone, count]) => ({ phone, count }));
+
+
+
+      let sessionRowsWithPhone = 0;
+
+      const sessionRowsWithoutPhone = [];
+
+      rows2.forEach((row, index) => {
+
+        const phones = detectPhones(row).filter(isLikelyIndianMobile);
+
+        if (phones.length) {
+
+          sessionRowsWithPhone += 1;
+
+        } else {
+
+          sessionRowsWithoutPhone.push({ rowNumber: index + 2 });
+
+        }
+
+      });
+
+
+
+      const sessionPhones = Object.keys(sessionGroups).filter(isLikelyIndianMobile);
+
+      const sessionOnlyPhones = sessionPhones.filter(phone => !leadPhoneCounts.has(phone));
+
+      const unmatchedLeads = output.filter(r => !sessionMap[r.phone]);
+
+      const matchedLeadCount = output.length - unmatchedLeads.length;
+
+      const unknownDispositionRows = output.filter(r => r.outcome === 'Unknown');
+
+      const sessionSelectionCounts = { recording: 0, summary: 0, fallback: 0 };
+
+      Object.values(sessionMap).forEach(session => {
+
+        const reason = session.selectionReason || 'fallback';
+
+        sessionSelectionCounts[reason] = (sessionSelectionCounts[reason] || 0) + 1;
+
+      });
+
+      const missingFile1Required = getMissingColumnGroups(rows1, validation.file1RequiredGroups);
+
+      const missingFile1Recommended = getMissingColumnGroups(rows1, validation.file1RecommendedGroups);
+
+      const missingFile2Recommended = getMissingColumnGroups(rows2, validation.file2RecommendedGroups);
+
+      const warnings = [];
+
+
+
+      if (!rows1.length) {
+
+        addQualityWarning(warnings, 'danger', 'File 1 has no data rows', 'Audience & Leads parsed successfully, but no lead rows were found.');
+
+      }
+
+      if (!rows2.length) {
+
+        addQualityWarning(warnings, 'danger', 'File 2 has no data rows', 'Sessions parsed successfully, but no session rows were found.');
+
+      }
+
+      if (missingFile1Required.length) {
+
+        addQualityWarning(warnings, 'danger', 'File 1 required columns missing', `Missing: ${missingFile1Required.join(', ')}.`);
+
+      }
+
+      if (invalidLeadRows.length) {
+
+        addQualityWarning(warnings, 'warn', 'Rows skipped because phone is invalid', `${invalidLeadRows.length} File 1 row(s) were skipped by the existing phone normalization rule.`);
+
+      }
+
+      if (duplicatePhones.length) {
+
+        addQualityWarning(warnings, 'warn', 'Duplicate File 1 phone numbers found', `${duplicatePhones.length} phone number(s) appear more than once in Audience & Leads.`);
+
+      }
+
+      if (unmatchedLeads.length) {
+
+        addQualityWarning(warnings, 'warn', 'Processed leads without a session match', `${unmatchedLeads.length} processed lead(s) did not match any Sessions row.`);
+
+      }
+
+      if (sessionOnlyPhones.length) {
+
+        addQualityWarning(warnings, 'warn', 'Sessions not present in File 1', `${sessionOnlyPhones.length} session phone number(s) were not present in Audience & Leads.`);
+
+      }
+
+      if (unknownDispositionRows.length) {
+
+        const names = Array.from(new Set(unknownDispositionRows.map(r => r.disposition || '(blank)'))).slice(0, 6);
+
+        addQualityWarning(warnings, 'warn', 'Unknown dispositions need review', `${unknownDispositionRows.length} lead(s) mapped to Unknown. Examples: ${names.join(', ')}.`);
+
+      }
+
+      if (sessionRowsWithoutPhone.length) {
+
+        addQualityWarning(warnings, 'warn', 'Session rows without detectable phone', `${sessionRowsWithoutPhone.length} File 2 row(s) had no detectable 10 digit phone.`);
+
+      }
+
+      if (!callTriggered) {
+
+        addQualityWarning(warnings, 'warn', 'Call triggered text is empty', 'No valid session date range was detected from File 2.');
+
+      }
+
+      if (missingFile1Recommended.length) {
+
+        addQualityWarning(warnings, 'info', 'File 1 optional columns missing', `Missing: ${missingFile1Recommended.join(', ')}.`);
+
+      }
+
+      if (missingFile2Recommended.length) {
+
+        addQualityWarning(warnings, 'info', 'File 2 optional columns missing', `Missing: ${missingFile2Recommended.join(', ')}.`);
+
+      }
+
+      if (!warnings.length) {
+
+        addQualityWarning(warnings, 'info', 'No review issues found', 'The batch passed validation and reconciliation checks.');
+
+      }
+
+
+
+      const metrics = [
+
+        { label: 'Valid leads', value: output.length, tone: 'blue' },
+
+        { label: 'Matched leads', value: matchedLeadCount, tone: 'green' },
+
+        { label: 'Unmatched leads', value: unmatchedLeads.length, tone: unmatchedLeads.length ? 'amber' : 'green' },
+
+        { label: 'Skipped rows', value: invalidLeadRows.length, tone: invalidLeadRows.length ? 'red' : 'green' },
+
+        { label: 'Duplicate phones', value: duplicatePhones.length, tone: duplicatePhones.length ? 'amber' : 'green' },
+
+        { label: 'Unknown dispositions', value: unknownDispositionRows.length, tone: unknownDispositionRows.length ? 'amber' : 'green' },
+
+        { label: 'Selected by recording', value: sessionSelectionCounts.recording, tone: 'green' },
+
+        { label: 'Selected by summary', value: sessionSelectionCounts.summary, tone: 'blue' },
+
+        { label: 'Selection fallback', value: sessionSelectionCounts.fallback, tone: sessionSelectionCounts.fallback ? 'amber' : 'green' },
+
+      ];
+
+
+
+      const samples = [
+
+        {
+
+          title: 'Invalid File 1 phones',
+
+          rows: invalidLeadRows.slice(0, 5).map(r => `Row ${r.rowNumber}: ${r.rawPhone}${r.name ? ' - ' + r.name : ''}`)
+
+        },
+
+        {
+
+          title: 'Duplicate File 1 phones',
+
+          rows: duplicatePhones.slice(0, 5).map(r => `${r.phone} appears ${r.count} times`)
+
+        },
+
+        {
+
+          title: 'Leads without session match',
+
+          rows: unmatchedLeads.slice(0, 5).map(r => `${r.phone}${r.full_name ? ' - ' + r.full_name : ''}`)
+
+        },
+
+        {
+
+          title: 'Session-only phones',
+
+          rows: sessionOnlyPhones.slice(0, 5)
+
+        },
+
+        {
+
+          title: 'Unknown dispositions',
+
+          rows: unknownDispositionRows.slice(0, 5).map(r => `${r.phone}: ${r.disposition || '(blank)'}`)
+
+        },
+
+        {
+
+          title: 'Session selection method',
+
+          rows: [
+
+            `Recording priority: ${sessionSelectionCounts.recording}`,
+
+            `Summary priority: ${sessionSelectionCounts.summary}`,
+
+            `Fallback latest row: ${sessionSelectionCounts.fallback}`,
+
+          ]
+
+        },
+
+      ].filter(section => section.rows.length);
+
+
+
+      if (!samples.length) {
+
+        samples.push({ title: 'No reconciliation samples', rows: ['No invalid, duplicate, unmatched, or unknown rows to sample.'] });
+
+      }
+
+
+
+      const reviewCount = warnings.filter(w => w.level !== 'info').length;
+
+      return {
+
+        status: reviewCount ? `${reviewCount} review item${reviewCount === 1 ? '' : 's'}` : 'Clean batch',
+
+        subtitle: 'This report explains batch health only. It does not change Zoho formulas, copy output, or Excel export columns.',
+
+        metrics,
+
+        warnings,
+
+        samples,
+
+        counts: {
+
+          file1Rows: rows1.length,
+
+          file2Rows: rows2.length,
+
+          sessionRowsWithPhone,
+
+          sessionRowsWithoutPhone: sessionRowsWithoutPhone.length,
+
+          sessionOnlyPhones: sessionOnlyPhones.length,
+
+          allLeads: allLeads.length,
+
+        }
+
+      };
+
+    }
+
+
+
+    // ─── ANANT WA HELPER FUNCTIONS ───────────────────────────────────────────────
+
+    function isAnantWAConfig() {
+      const cfg = getActiveDealerConfig();
+      return cfg.name === 'Anant WA';
+    }
+
+    function formatAnantWAFields(record) {
+      return {
+        ...record,
+        // Anant WA specific field formatting
+        conversion: '',
+        session_history: record.session_history || '',
+        last_session_id: record.last_session_id || '',
+        pincode: record.pincode?.toLowerCase() || '',
+        channel: record.channel || '',
+        num_attempts: formatNumberAttempts(record.num_attempts),
+        sentiment: record.sentiment?.toUpperCase() || '',
+      };
+    }
+
+    function formatNumberAttempts(attempts) {
+      return attempts ? `No. of Attempts` : '0';
+    }
+
+
+    // ─── CORE PROCESSING ──────────────────────────────────────────────────────────
+
+    async function processFiles() {
+
+      if (!rawFile1 || !rawFile2) return;
+
+
+
+      showOverlay('Parsing files…');
+
+      await tick();
+
+
+
+      try {
+
+        const [ab1, ab2] = await Promise.all([
+
+          readFileAsArrayBuffer(rawFile1),
+
+          readFileAsArrayBuffer(rawFile2)
+
+        ]);
+
+
+
+        showOverlay('Parsing Audience & Leads…');
+
+        await tick();
+
+        const rows1 = parseSheet(ab1);
+
+
+
+        showOverlay('Parsing Sessions…');
+
+        await tick();
+
+        const rows2 = parseSheet(ab2);
+
+
+
+        showOverlay('Applying business logic…');
+
+        await tick();
+
+
+
+        // ── EARLY VALIDATION ─────────────────────────────────────────────────────
+
+        var validation = BUSINESS_CONFIG.validation;
+
+        var missingFile1Required = getMissingColumnGroups(rows1, validation.file1RequiredGroups);
+
+        if (missingFile1Required.length > 0) {
+
+          hideOverlay();
+
+          addQualityWarning([], 'danger', 'File 1 required columns missing', 'Missing: ' + missingFile1Required.join(', ') + '. Fix and re-upload.');
+
+          renderQualityReport([{ type: 'danger', title: 'File 1 required columns missing', detail: 'Missing: ' + missingFile1Required.join(', ') + '. Fix and re-upload.' }]);
+
+          setStatus('globalStatus', 'File 1 missing required columns. Cannot process.', 'err');
+
+          return;
+
+        }
+
+
+
+        // ── BUILD FILE 1 LIST ──────────────────────────────────────────────────
+
+        const allLeads = [];
+
+        for (const r of rows1) {
+
+          const phone = normalizePhone(r['phone_number'] || r['phone'] || r['mobile'] || '');
+
+          if (!phone) continue;
+
+          allLeads.push({ row: r, phone });
+
+        }
+
+
+
+        // ── BUILD FILE 2 MAP ────────────────────────────────────────────────────
+
+        const sessionGroups = {};
+
+        for (const r of rows2) {
+
+          const phones = detectPhones(r);
+
+          for (const phone of phones) {
+
+            if (!sessionGroups[phone]) sessionGroups[phone] = [];
+
+            sessionGroups[phone].push(r);
+
+          }
+
+        }
+
+
+
+        const sessionMap = {};
+
+        for (const [phone, sessions] of Object.entries(sessionGroups)) {
+
+          let best = null;
+
+          let selectionReason = 'fallback';
+
+          var sorted = sessions.slice().sort(function(a, b) {
+            var aTs = detectDate(a) || a['start_time'] || a['timestamp'] || '';
+            var bTs = detectDate(b) || b['start_time'] || b['timestamp'] || '';
+            return bTs.localeCompare(aTs);
+          });
+
+          for (const s of sorted) {
+
+            const rec = detectRecording(s);
+
+            if (rec) {
+
+              best = s;
+
+              selectionReason = 'recording';
+
+              break;
+
+            }
+
+          }
+
+          if (!best) {
+
+            for (const s of sorted) {
+
+              const summ = detectSummary(s);
+
+              if (summ) {
+
+                best = s;
+
+                selectionReason = 'summary';
+
+                break;
+
+              }
+
+            }
+
+          }
+
+          if (!best) best = sorted[0];
+
+          var histRaw = detectHistory(best);
+
+
+
+          sessionMap[phone] = {
+
+            selectionReason,
+
+            recording: detectRecording(best),
+
+            summary: detectSummary(best),
+
+            sentiment: detectSentiment(best),
+
+            dateStr: detectDate(best),
+
+            startTime: best['start_time'] || '',
+
+            channel: detectChannel(best),
+
+            duration: detectDuration(best),
+
+            session_id: detectSessionId(best),
+
+            session_disposition: detectSessionDisposition(best),
+
+            history_text: formatHistoryForPrompt(histRaw),
+
+          };
+
+        }
+
+
+
+        // ── CALL TRIGGERED ─────────────────────────────────────────────────────
+
+        let minDate = null, maxDate = null;
+
+        for (const r of rows2) {
+
+          const dStr = detectDate(r) || r['start_time'] || '';
+
+          const d = parseAutoEngageDate(dStr);
+
+          if (!d) continue;
+
+          if (!minDate || d < minDate) minDate = d;
+
+          if (!maxDate || d > maxDate) maxDate = d;
+
+        }
+
+
+
+        let callTriggered = '';
+
+        if (minDate && maxDate) {
+
+          const day = ordinalSuffix(minDate.getDate());
+
+          const month = MONTH_NAMES[minDate.getMonth()];
+
+          const tMin = formatTime12(minDate);
+
+          const tMax = formatTime12(maxDate);
+
+          callTriggered = `${day} ${month} Calls Triggered From ${tMin} - ${tMax}`;
+
+        }
+
+
+
+        // ── ASSEMBLE OUTPUT ROWS ───────────────────────────────────────────────
+
+        const output = [];
+
+        const startId = parseInt(document.getElementById('leadIdStart').value) || 0;
+
+        const selectedLanguage = document.getElementById('langSelect').value;
+
+        for (const { row, phone } of allLeads) {
+
+          const disp = (row['disposition'] || '').trim();
+
+          const dispLower = disp.toLowerCase();
+
+          const priority = getDispositionPriority(disp);
+
+
+
+          let outcome;
+
+          if (CONNECTED_SET.has(dispLower)) {
+
+            outcome = 'Connected';
+
+          } else if (NOT_CONNECTED_SET.has(dispLower)) {
+
+            outcome = 'Not Connected';
+
+          } else if (disp && Object.keys(ALL_DISPOSITIONS).some(function(k) { return k.toLowerCase() === dispLower; })) {
+
+            outcome = 'Connected';
+
+          } else {
+
+            outcome = 'Unknown';
+
+            console.warn(`[Pre-Sales Sync] Unknown disposition "${disp}" for phone ${phone} — mapped to "Unknown". Check for typos or add to DISPOSITION_PRIORITY / CONNECTED_SET / NOT_CONNECTED_SET.`);
+
+          }
+
+
+
+          var dealerCfg = getActiveDealerConfig();
+
+          var summarySrc = row[dealerCfg.summarySource] || row['disposition_detail'] || '';
+
+          var summary = summarySrc.trim() || 'No Response';
+
+          var dispositionDetail = row['disposition_detail'] || '';
+
+
+
+          const callDateRaw = row['updated'] || '';
+
+          const callDateObj = parseAutoEngageDate(callDateRaw);
+
+          const callDate = formatCallDate(callDateObj);
+
+
+
+          const model = (row['name'] || row['model_preference'] || row['interested_vehicle_name'] || '').replace(/[\[\]"']/g, '').trim();
+
+          const seatingRaw = row['seating_capacity_preference'] || '';
+
+          const seating = deriveSeating(seatingRaw, model);
+
+
+
+          const sess = sessionMap[phone] || {};
+
+          const isStellantis = document.getElementById('dealerSelect').value === 'stellantis_wa';
+
+
+
+          const leadId = startId > 0 ? `L-${startId + output.length}` : `L-${output.length + 1}`;
+
+          const formulaRow = startId > 0 ? startId + output.length : 2 + output.length;
+
+
+
+          var dispositionText = (row['disposition_detail'] || '').toLowerCase();
+
+          output.push({
+
+            lead_id: leadId,
+
+            full_name: row['person_name'] || '',
+
+            phone,
+
+            city: row['city'] || '',
+
+            pincode: row['pincode'] || '',
+
+            language: selectedLanguage,
+
+            lead_source: row['lead_source'] || '',
+
+            cohort: row['campaign_objective_name'] || '',
+
+            campaign_id: row['campaign_id'] || '',
+
+            last_session_id: isStellantis ? (sess.session_id || '') : (sess.session_id || row['last_session_id'] || row['session_id'] || ''),
+
+            call_triggered: callTriggered,
+
+            outcome,
+
+            disposition: disp,
+
+            summary: isStellantis ? (sess.summary || 'No Response') : summary,
+
+            disposition_detail: isStellantis ? (sess.session_disposition || '') : dispositionDetail,
+
+            manual_disposition_detail: '',
+
+            call_date: callDate,
+
+            num_attempts: `=COUNTIF(C:C;C${formulaRow})`,
+
+            sentiment: sess.sentiment || '',
+
+            recordings: sess.recording || '',
+
+            model,
+
+            seating,
+
+            exclusion_flag: priority >= TERMINAL_THRESHOLD ? 'YES' : '',
+
+            session_summary: sess.summary || '',
+
+            session_history: sess.history_text || '',
+
+            conversion: dispositionText.includes('converted') ? 'Yes' : '',
+
+            channel: sess.channel || '',
+
+            call_duration: sess.duration || '',
+
+          });
+
+          // Anant WA specific processing
+          if (isAnantWAConfig()) {
+            output[output.length - 1] = formatAnantWAFields(output[output.length - 1]);
+          }
+
+        }
+
+
+
+        processedData = output;
+
+        qualityReport = buildQualityReport(rows1, rows2, allLeads, sessionGroups, sessionMap, output, callTriggered);
+
+
+
+        renderTableHeader();
+
+        renderTable(output);
+
+        updateSortIndicators();
+
+        renderConvertedTable(output);
+
+        renderTestDriveTable(output);
+
+        renderStats(output);
+
+        renderQualityReport(qualityReport);
+
+        hideOverlay();
+
+
+
+        setStatus('globalStatus', `${output.length} leads processed. Ready to copy or export.`, 'ok');
+
+        document.getElementById('pill3').classList.remove('active');
+
+        document.getElementById('pill4').classList.add('active');
+
+        document.getElementById('btnProcess').classList.remove('ready');
+
+        document.getElementById('btnCopy').style.display = '';
+
+        document.getElementById('btnCopy').disabled = false;
+
+        document.getElementById('btnExport').style.display = '';
+
+        document.getElementById('btnExport').disabled = false;
+
+        document.getElementById('btnValidateAI').style.display = '';
+
+        document.getElementById('btnValidateAI').disabled = false;
+
+        document.getElementById('btnReset').style.display = '';
+
+
+
+      } catch (e) {
+
+        hideOverlay();
+
+        setStatus('globalStatus', `Error: ${e.message}`, 'err');
+
+        console.error(e);
+
+      }
+
+    }
+
+
+
+    /* ═══════════════════════════════════════════════════════════════════════
+
+       LLM DISPOSITION VALIDATION
+
+       ═══════════════════════════════════════════════════════════════════════ */
+
+    async function validateDispositionsWithLLM(force) {
+
+      if (!processedData || processedData.length === 0) return;
+
+
+
+      // Reset button text
+
+      document.getElementById('btnValidateAI').textContent = 'Validating...';
+
+
+
+      const apiKey = getApiKey();
+
+      if (!apiKey) {
+
+        setStatus('globalStatus', 'AI key required. Paste your key above and click Save.', 'err');
+
+        return;
+
+      }
+
+
+
+      // Build list of valid dispositions
+
+      const dispKeys = Object.keys(ALL_DISPOSITIONS);
+
+      const dispDefs = dispKeys.map(k => `- "${k}": ${ALL_DISPOSITIONS[k]}`).join('\n');
+
+
+
+      function hasValidSummary(r) {
+        var summ = (r.session_summary || '').trim();
+        var hist = (r.session_history || '').trim();
+        return (summ && summ !== 'No Response' && summ !== 'The session history is empty and contains no content to summarize.') || (hist && hist.length > 0);
+      }
+
+      // Filter rows that have a meaningful session_summary OR session_history AND any disposition_detail
+
+      const candidates = [];
+
+      for (var i = 0; i < processedData.length; i++) {
+
+        var r = processedData[i];
+
+        var summ = (r.session_summary || '').trim();
+
+        var hist = (r.session_history || '').trim();
+
+        var disp = (r.disposition_detail || '').trim();
+
+        if (hasValidSummary(r) && disp && r.outcome === 'Connected') {
+
+          candidates.push({ index: i, summary: summ, history: hist, currentDisp: disp, model: r.model || '', outcome: r.outcome || '', callDuration: r.call_duration || '', leadSource: r.lead_source || '' });
+
+        }
+
+      }
+
+
+
+      if (candidates.length === 0) {
+
+        setStatus('globalStatus', 'No rows with session summaries to validate.', 'warn');
+
+        return;
+
+      }          // Show inline AI status bar instead of blocking overlay
+
+      showAiStatusBar(candidates.length);
+
+
+
+      var corrected = 0;
+
+      var BATCH_SIZE = LLM_DISPOSITION_BATCH_SIZE;
+
+      var correctedResults = {};
+
+
+
+      // Check cache first — build a combined hash
+
+      var cacheInput = candidates.map(function(c) { return c.summary + '||' + c.history + '||' + c.currentDisp + '||' + c.model + '||' + c.outcome + '||' + c.callDuration + '||' + c.leadSource; }).join('|');
+
+      var cacheKey = 'disp-validate-v3-history-' + hashStr(cacheInput);
+
+      var cached = force ? null : localStorage.getItem(cacheKey);
+
+      var cachedParsed = null;
+
+      if (cached) {
+
+        try {
+
+          cachedParsed = JSON.parse(cached);
+
+        } catch(e) { cached = null; }
+
+      }
+
+
+
+      if (!cached) {
+
+        var runnerOpts = {
+
+          items: candidates,
+
+          batchSize: BATCH_SIZE,
+
+          maxConcurrent: LLM_DISPOSITION_MAX_CONCURRENT,
+
+          minGapMs: 500,
+
+          maxRetries: LLM_DISPOSITION_MAX_RETRIES,
+
+          requestTimeoutMs: LLM_DISPOSITION_TIMEOUT_MS,
+
+          cachedData: null,
+
+          getCacheKey: null,
+
+          buildPrompt: function(batch, batchIndex) {
+
+            var dispDefs = Object.keys(ALL_DISPOSITIONS).map(function(k) { return '- "' + k + '": ' + ALL_DISPOSITIONS[k]; }).join('\n');
+
+            var promptLines = batch.map(function(c, idx) {
+
+              var safeSummary = sanitizeForPrompt(c.summary);
+
+              var safeHistory = sanitizeForPrompt(c.history);
+
+              var safeDisp = sanitizeForPrompt(c.currentDisp);
+
+              var safeModel = sanitizeForPrompt(c.model);
+
+              var safeOutcome = sanitizeForPrompt(c.outcome);
+
+              var safeDuration = sanitizeForPrompt(c.callDuration);
+
+              var safeSource = sanitizeForPrompt(c.leadSource);
+
+              var line = 'Row ' + idx + ':';
+
+              if (safeSummary) line += '\n--- BEGIN SUMMARY ---\n' + safeSummary + '\n--- END SUMMARY ---';
+
+              if (safeHistory) line += '\n--- BEGIN CONVERSATION HISTORY ---\n' + safeHistory + '\n--- END CONVERSATION HISTORY ---';
+
+              line += '\nCurrent Disposition: "' + safeDisp + '"';
+
+              if (safeModel) line += '\nVehicle Model: "' + safeModel + '"';
+
+              if (safeOutcome) line += '\nCall Outcome: "' + safeOutcome + '"';
+
+              if (safeDuration) line += '\nCall Duration: "' + safeDuration + '"';
+
+              if (safeSource) line += '\nLead Source: "' + safeSource + '"';
+
+              return line;
+
+            }).join('\n\n---\n\n');
+
+
+
+            var systemMsg = 'You are a fair and accurate disposition auditor for automotive Pre-Sales campaigns. ' +
+'Your job is to evaluate whether the "Current Disposition" accurately describes the call. ' +
+'You are provided with two evidence sources: 1) a Summary (short description), and 2) a Conversation History (full transcript with timestamps). ' +
+'The Conversation History is the STRONGEST evidence if it is detailed and clear. However, if the Conversation History is empty, extremely short (e.g., just greeting exchange), or inconclusive, you MUST rely on the Summary and Current Disposition — do not flag them as incorrect unless there is a clear contradiction.\n' +
+window.INJECTION_GUARD + '\n\n' +
+'General guidance for automotive outbound calls — use the KEY PHRASES to detect the correct disposition:\n\n' +
+'- "No Response" — only when the customer did not speak at all or the summary explicitly says "No Response" / "customer remained unresponsive" / "did not respond" / "no further conversation". ' +
+'KEY PHRASES: "no response", "did not respond", "remained unresponsive", "customer did not speak", "no further conversation", "session history is empty", "no content to summarize", "no messages were exchanged", "blank entries". ' +
+'Do NOT use "No Response" when there was actual conversation (even if the customer interrupted or declined quickly).\n' +
+'- "Audio Issue" — when the summary mentions trouble hearing the customer. ' +
+'KEY PHRASES: "could not hear", "unable to hear", "speak louder", "connection issues", "audio issues", "technical difficulties", "communication difficulties", "could not hear clearly", "failed to hear", "trouble hearing", "connectivity issues", "unable to hear the customer", "could not hear the customer", "could not hear the user", "repeated requests to speak louder", "inaudible", "difficulty hearing". ' +
+'These should be flagged if currently set to "No Response" or "Others".\n' +
+'- "Voicemail" — when the call reached an automated recording or voicemail prompt. ' +
+'KEY PHRASES: "voicemail", "automated recording", "automated message", "automated voicemail", "instructing the caller to hang up", "leave a message", "after the beep", "leave a message after the tone", "voicemail prompt", "recording is complete and the user may hang up", "prompted to leave a message", "notification indicating that the recording is complete". ' +
+'Do NOT confuse with "No Response" — voicemail means system-detected answering machine.\n' +
+'- "Invalid Lead" — when the customer says it is the wrong number or not the right person. ' +
+'KEY PHRASES: "wrong number", "not the person", "did not make an inquiry", "did not initiate the inquiry", "no knowledge of the inquiry", "expressed confusion about being contacted", "not a valid lead", "already owns the vehicle", "recipient clarified that they are not the person", "the person stated they did not inquire", "the inquiry belongs to someone else", "stated that this is a wrong number". ' +
+'Also when the customer already owns the vehicle in question.\n' +
+'- "Purchased Elsewhere" — customer explicitly states they already bought a vehicle (any brand, any dealer). ' +
+'KEY PHRASES: "already purchased", "already bought", "already booked", "congratulated him on his new car", "congratulated him on his new vehicle", "congratulated him on his purchase", "purchased a [brand]", "bought a [brand]", "informed that he has already purchased". ' +
+'NOT the same as "Not Interested" (where no purchase was made, just lack of interest). ' +
+'If both could apply, prefer "Purchased Elsewhere".\n' +
+'- "Not Interested" — customer explicitly says they do not want the vehicle, no purchase mentioned. ' +
+'KEY PHRASES: "not interested", "no longer interested", "stated they are not interested", "declined the offer", "do not want the vehicle", "not currently interested", "declined the conversation", "declined to speak", "declined further discussion", "declined the call". ' +
+'If they bought elsewhere, use "Purchased Elsewhere" which is more specific.\n' +
+'- "Language Barrier" — when the conversation centered on language preference and the campaign objective was not completed. ' +
+'KEY PHRASES: "English or Telugu", "English or Kannada", "language preference", "preferred language", "continue the conversation in English or", "asked to speak in [language]", "does not support [language]", "Hindi not supported", "language mismatch", "could not accommodate [language]". ' +
+'Only when the language preference itself stalled the conversation.\n' +
+'- "Call Disconnected" — when the call dropped mid-conversation or customer disconnected themselves. ' +
+'KEY PHRASES: "call disconnected", "customer disconnected", "call dropped", "customer hung up", "disconnected the call", "ended the call abruptly", "call was terminated", "disconnected abruptly", "the call was unsuccessful", "could not be completed", "failed to establish communication". ' +
+'NOT the same as "No Response" (no connection ever) or "Others".\n' +
+'- "Requested Callback" — customer asked to be called back at a specific time or later. ' +
+'KEY PHRASES: "requested to be called back", "asked to call back", "called back at", "reschedule", "call back later", "follow up at", "callback", "requested a callback", "asked for a callback", "agreed to reschedule", "said to call back", "requested a follow-up call", "requested to be contacted later", "asked the agent to call back". ' +
+'If they just said "not a good time" without scheduling, prefer "Purchase Postponed" or "Call Disconnected".\n' +
+'- "Others" — catch-all for interactions that had some conversation but no specific disposition signal. ' +
+'Do NOT use "Others" when a more specific disposition clearly fits. Only use when the interaction is truly ambiguous — e.g., customer just said "hello" and call ended, or generic greeting with no follow-up. ' +
+'KEY PHRASES in isolation: "customer confirmed they are available to speak", "conversation is in the initial stages", "the assistant initiated a conversation", "no further details were exchanged".\n' +
+'- "Follow Up Required" — customer needs follow-up to convince them to complete the campaign objective. ' +
+'KEY PHRASES: "follow up required", "needs convincing", "customer needs follow up", "will decide later", "asked for more information", "wants to think about it", "not ready to decide yet". ' +
+'"Purchase Postponed" is for when the customer explicitly defers the buying decision due to external reasons (funds, family, timing).\n\n' +
+'Be balanced: if the current disposition reasonably fits, mark as correct (isCorrect: true). Only flag isCorrect: false when there is a clear mismatch or a significantly more accurate disposition available. ' +
+'Use the KEY PHRASES as strong signals but always consider the full context of the Summary and Conversation History together.';
+
+
+
+
+            var examples = 'Example 1 (CORRECT):\nTranscript: "Customer: Hello? Agent: Hello, I am calling from Yamaha to discuss the FZ vehicle. Customer: Yes, I am busy right now, call me in the evening. Agent: Sure, thank you."\nCurrent Disposition: "Requested Callback"\n→ isCorrect: true, correctedDisposition: null\nReason: The transcript clearly shows the customer asked for a callback, matching the disposition.\n\n' +
+              'Example 2 (CORRECT - SHORT TRANSCRIPT):\nTranscript: "Customer: Hello?"\nSummary: "Spoke to customer Rajesh. He said he is not interested in buying a car right now and hung up."\nCurrent Disposition: "Not Interested"\n→ isCorrect: true, correctedDisposition: null\nReason: The transcript is too short/inconclusive, but the Summary explicitly states the customer is not interested, which matches the disposition.\n\n' +
+              'Example 3 (CORRECT - EMPTY TRANSCRIPT):\nTranscript: ""\nSummary: "Voicemail. Left a message."\nCurrent Disposition: "Voicemail"\n→ isCorrect: true, correctedDisposition: null\nReason: Transcript is empty, but the Summary matches the disposition perfectly.\n\n' +
+              'Example 4 (INCORRECT):\nTranscript: "Customer: I will think about it and call you back next week."\nCurrent Disposition: "Not Interested"\n→ isCorrect: false, correctedDisposition: "Will decide later, exploring options"\nReason: Customer did not reject the offer — they deferred the decision. Not Interested is for explicit refusal.\n\n' +
+              'Example 5 (INCORRECT):\nTranscript: "Customer: How much does the FZ model cost? Agent: It is 1.2 Lakhs. Customer: Can you send details?"\nCurrent Disposition: "General Inquiry"\n→ isCorrect: false, correctedDisposition: "Enquired for Pricing"\nReason: Customer specifically asked for pricing/costs, so "Enquired for Pricing" is more specific and accurate than "General Inquiry".\n\n' +
+              'Example 6 (INCORRECT):\nTranscript: "Customer: The vehicle is too expensive, I will buy a Honda instead."\nCurrent Disposition: "Rejected"\n→ isCorrect: false, correctedDisposition: "Comparing with another brand"\nReason: Customer is comparing the model with a competitor brand, so "Comparing with another brand" is the most specific disposition.\n\n' +
+              'Example 7 (INCORRECT):\nTranscript: "Agent: Hello? Customer: Hello. [Call disconnected/dropped]"\nCurrent Disposition: "Follow Up Required"\n→ isCorrect: false, correctedDisposition: "Call Disconnected"\nReason: The call disconnected abruptly. "Call Disconnected" is the correct status, rather than "Follow Up Required".\n\n' +
+              'Example 8 (CORRECT):\nTranscript: "Customer: I already bought a Pulsar last week from another dealer."\nCurrent Disposition: "Purchased elsewhere"\n→ isCorrect: true, correctedDisposition: null\nReason: The transcript confirms the customer bought the vehicle elsewhere, matching the disposition.';
+
+
+
+            var userPrompt = 'VALID DISPOSITIONS:\n' + dispDefs + '\n\nEXAMPLES (learn from these patterns):\n' + examples + '\n\nNow evaluate these rows. For EACH row, respond with ONE JSON object:\n{"rowIndex":0,"isCorrect":true,"correctedDisposition":null,"confidence":"high","reason":"The summary clearly matches the disposition."}\n\nRows:\n' + window.USER_DATA_DELIMITER + '\n' + promptLines + '\n' + window.USER_DATA_END_DELIMITER + '\n\nRespond as a JSON array of objects, one per row in the same order. ONLY valid JSON.';
+
+
+
+            return {
+
+              system: systemMsg,
+
+              user: userPrompt,
+
+              temperature: 0.3,
+
+              maxTokens: LLM_DISPOSITION_MAX_TOKENS
+
+            };
+
+          },
+
+          parseResponse: function(text, batch, batchIndex) {
+
+            // First try to parse the entire text as JSON.
+            // If it's a JSON-encoded string (e.g. "[{\"rowIndex\":0,...}]"), 
+            // this unwraps it to the actual array string before regex extraction.
+            try {
+              var fullParsed = JSON.parse(text);
+              if (typeof fullParsed === 'string') {
+                text = fullParsed;
+              } else if (Array.isArray(fullParsed)) {
+                return fullParsed.map(function(item, idx) {
+                  return {
+                    rowIndex: (batchIndex * BATCH_SIZE) + idx,
+                    isCorrect: item.isCorrect,
+                    correctedDisposition: item.correctedDisposition,
+                    confidence: item.confidence,
+                    reason: item.reason
+                  };
+                });
+              }
+            } catch(e) {
+              // Not valid JSON — fall through to regex method
+            }
+
+            var cleaned = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+
+            cleaned = cleaned.replace(/\\"/g, '"');
+
+            var match = cleaned.match(/\[[\s\S]*\]/);
+
+            if (match) {
+
+              var parsed = JSON.parse(match[0]);
+
+              // Assign rowIndex relative to the batch
+
+              return parsed.map(function(item, idx) {
+
+                return {
+
+                  rowIndex: (batchIndex * BATCH_SIZE) + idx,
+
+                  isCorrect: item.isCorrect,
+
+                  correctedDisposition: item.correctedDisposition,
+
+                  confidence: item.confidence,
+
+                  reason: item.reason
+
+                };
+
+              });
+
+            }
+
+            return [];
+
+          },
+
+          buildHeaders: function() {
+            var cfg = window.JEJO_CONFIG || {};
+            return {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-GRYD-TOKEN': sessionStorage.getItem('gryd_token') || '',
+              'X-GRYD-SESSION-ID': sessionStorage.getItem('gryd_session_id') || '',
+              'X-GRYD-ENTERPRISE-ID': sessionStorage.getItem('gryd_enterprise_id') || 'autocrm',
+              'X-GRYD-SIGNUP-TOKEN': cfg.grydSignupToken || '',
+              'X-GRYD-APPLICATION-ID': 'autocrm'
+            };
+          },
+
+          onProgress: function(done, total, message, pct) {
+
+            updateAiStatusBar(done, total, message, pct, correctedResults);
+
+          },
+
+          signal: aiValidationController ? aiValidationController.signal : null
+
+        };
+
+
+
+        var runnerResult = await runLlmBatches(runnerOpts);
+
+        
+
+        // Check if aborted — don't apply results if user cancelled
+
+        if (runnerResult.aborted) {
+
+          hideAiStatusBar(correctedResults);
+
+          return;
+
+        }
+
+        
+
+        corrected = runnerResult.correctedCount;
+
+
+
+        // Build cache array from runner results and candidates
+
+        var cacheArray = [];
+
+        for (var idx = 0; idx < candidates.length; idx++) {
+
+          var c = candidates[idx];
+
+          var decision = runnerResult.results.get(idx);
+
+          if (decision && decision.isCorrect === false && decision.correctedDisposition) {
+
+            cacheArray.push({ rowIndex: idx, isCorrect: false, correctedDisposition: decision.correctedDisposition });
+
+          } else {
+
+            cacheArray.push({ rowIndex: idx, isCorrect: true, correctedDisposition: null });
+
+          }
+
+        }
+
+        try { localStorage.setItem(cacheKey, JSON.stringify(cacheArray)); } catch(e) {}
+
+
+
+        // Apply corrections from runner results
+
+        for (var ri = 0; ri < candidates.length; ri++) {
+
+          var dec = runnerResult.results.get(ri);
+
+          if (dec && dec.isCorrect === false && dec.correctedDisposition) {
+
+            correctedResults[candidates[ri].index] = dec.correctedDisposition;
+
+          }
+
+        }
+
+      } else {
+
+        // Cache hit — parse cached data
+
+        try {
+
+          for (var ci = 0; ci < cachedParsed.length; ci++) {
+
+            var item = cachedParsed[ci];
+
+            if (item.isCorrect === false && item.correctedDisposition) {
+
+              correctedResults[item.rowIndex] = item.correctedDisposition;
+
+            }
+
+          }
+
+          corrected = Object.keys(correctedResults).length;
+
+        } catch(e) {}
+
+      }
+
+      // Apply corrections + mark validation status
+
+      var correctedIndices = Object.keys(correctedResults);
+
+      for (var k = 0; k < correctedIndices.length; k++) {
+
+        var rowIdx = parseInt(correctedIndices[k]);
+
+        if (processedData[rowIdx]) {
+
+          processedData[rowIdx].manual_disposition_detail = correctedResults[rowIdx];
+
+          processedData[rowIdx]._ai_status = 'corrected';
+
+        }
+
+      }
+
+      for (var ci = 0; ci < candidates.length; ci++) {
+
+        var cand = candidates[ci];
+
+        if (processedData[cand.index] && !processedData[cand.index]._ai_status) {
+
+          processedData[cand.index]._ai_status = 'verified';
+
+        }
+
+      }
+
+
+
+      hideAiStatusBar(correctedResults);
+
+      if (correctedIndices.length > 0) {
+
+        renderTable(processedData);
+
+        setStatus('globalStatus', 'AI validated ' + candidates.length + ' rows, corrected ' + correctedIndices.length + ' dispositions. Check Manual_Disposition_detail column.', 'ok');
+
+      } else {
+
+        setStatus('globalStatus', 'AI validated ' + candidates.length + ' rows — all dispositions appear correct.', 'ok');
+
+      }
+
+
+
+      // Switch button to re-run mode
+
+      document.getElementById('btnValidateAI').textContent = '↻ Re-run AI';
+
+      document.getElementById('btnValidateAI').onclick = function() { validateDispositionsWithLLM(true); };
+
+    }
+
+
+
+    // ─── RENDER TABLE ─────────────────────────────────────────────────────────────
+
+    // ─── SORT STATE ──────────────────────────────────────────────────────────────
+
+    let currentSortKey = 'full_name';   // 'full_name' | 'phone' | 'disposition' | null
+
+    let currentSortDir = 'asc';   // 'asc' | 'desc' | null
+
+
+
+    function toggleSort(key) {
+
+      if (currentSortKey === key) {
+
+        if (currentSortDir === 'asc') currentSortDir = 'desc';
+
+        else if (currentSortDir === 'desc') { currentSortKey = null; currentSortDir = null; }
+
+      } else {
+
+        currentSortKey = key;
+
+        currentSortDir = 'asc';
+
+      }
+
+      updateSortIndicators();
+
+      renderTable(processedData);
+
+    }
+
+
+
+    function updateSortIndicators() {
+
+      document.querySelectorAll('.th-sortable').forEach(th => {
+
+        th.classList.remove('sort-asc', 'sort-desc');
+
+        if (th.dataset.sortKey === currentSortKey && currentSortDir) {
+
+          th.classList.add(currentSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+
+        }
+
+      });
+
+    }
+
+
+
+    function compareCaseSensitiveStrings(a, b) {
+
+      if (a === b) return 0;
+
+      return a < b ? -1 : 1;
+
+    }
+
+
+
+    function getSortedData(data) {
+
+      let sorted = data;
+
+      if (currentSortKey && currentSortDir) {
+
+        sorted = [...data];
+
+        const dir = currentSortDir === 'asc' ? 1 : -1;
+
+        sorted.sort((a, b) => {
+
+          const va = String(a[currentSortKey] || '');
+
+          const vb = String(b[currentSortKey] || '');
+
+          return dir * compareCaseSensitiveStrings(va, vb);
+
+        });
+
+      }
+
+
+
+      const startId = parseInt(document.getElementById('leadIdStart').value) || 0;
+
+      sorted.forEach((r, i) => {
+
+        r.lead_id = startId > 0 ? `L-${startId + i}` : `L-${i + 1}`;
+
+        const formulaRow = startId > 0 ? startId + i : 2 + i;
+
+        r.num_attempts = `=COUNTIF(C:C;C${formulaRow})`;
+
+      });
+
+
+
+      return sorted;
+
+    }
+
+
+
+    const PREVIEW_LIMIT = 200;
+
+    function renderTable(data) {
+
+      data = getSortedData(data);
+
+      var cfg = getActiveDealerConfig();
+
+      var tbody = document.getElementById('outputBody');
+
+      tbody.innerHTML = '';
+
+      var preview = data.slice(0, PREVIEW_LIMIT);
+
+
+
+      for (var ri = 0; ri < preview.length; ri++) {
+
+        var r = preview[ri];
+
+        var tr = document.createElement('tr');
+
+        var colsHtml = '';
+
+        for (var ci = 0; ci < cfg.columns.length; ci++) {
+
+          var col = cfg.columns[ci];
+
+          var val = r[col.key];
+
+          if (col.key === 'phone') {
+
+            colsHtml += '<td class="cell-phone">' + esc(val) + '</td>';
+
+          } else if (col.key === 'call_recording' || col.key === 'recordings') {
+
+            var recording = val;
+
+            if (recording) {
+
+              var href = String(recording).startsWith('http') || String(recording).startsWith('s3:') ? recording : 'https://' + recording;
+
+              colsHtml += '<td><a class="cell-url" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" title="' + esc(recording) + '">Recording</a></td>';
+
+            } else {
+
+              colsHtml += '<td></td>';
+
+            }
+
+          } else if (col.key === 'outcome') {
+
+            var oc = r.outcome === 'Connected' ? 'cell-connected' : r.outcome === 'Unknown' ? 'cell-unknown' : 'cell-not-connected';
+
+            colsHtml += '<td class="' + oc + '">' + esc(r.outcome) + '</td>';
+
+          } else if (col.key === 'disposition') {
+
+            colsHtml += '<td class="' + getPrioClass(r.disposition) + '">' + esc(r.disposition) + '</td>';
+
+          } else if (col.key === 'sentiment') {
+
+            var sn = parseFloat(r.sentiment);
+
+            var sc = isNaN(sn) ? '' : sn >= 0.6 ? 'cell-sentiment-high' : sn >= 0.3 ? 'cell-sentiment-mid' : 'cell-sentiment-low';
+
+            colsHtml += '<td class="' + sc + '">' + esc(r.sentiment) + '</td>';
+
+          } else if (col.key === 'manual_disposition_detail') {
+
+            var status = r._ai_status || '';
+
+            var badge = '<span class="ai-badge pending">—</span>';
+
+            if (status === 'corrected') badge = '<span class="ai-badge corrected" title="AI suggested a correction">✎</span> ';
+
+            else if (status === 'verified') badge = '<span class="ai-badge verified" title="AI verified this disposition is correct">✓</span> ';
+
+            colsHtml += '<td>' + badge + esc(val) + '</td>';
+
+          } else {
+
+            colsHtml += '<td>' + esc(val) + '</td>';
+
+          }
+
+        }
+
+        tr.innerHTML = colsHtml;
+
+        tbody.appendChild(tr);
+
+      }
+
+
+
+      var cap = data.length > PREVIEW_LIMIT
+
+        ? 'Showing first ' + PREVIEW_LIMIT + ' of ' + data.length + ' rows'
+
+        : data.length + ' rows';
+
+      document.getElementById('tableCaption').textContent = cap;
+
+      document.getElementById('tableWrapper').style.display = 'block';
+
+      document.getElementById('tableWrapper').classList.add('fade-in');
+
+    }
+
+
+
+    // ─── RENDER CONVERTED TABLE ──────────────────────────────────────────────────
+
+    let convertedData = [];
+
+
+
+    function renderConvertedTable(data) {
+
+      convertedData = data.filter(r => r.conversion === 'Yes');
+
+      if (convertedData.length === 0) {
+
+        document.getElementById('convertedTableWrapper').style.display = 'none';
+
+        return;
+
+      }
+
+
+
+      const tbody = document.getElementById('convertedBody');
+
+      tbody.innerHTML = '';
+
+
+
+      for (const r of convertedData) {
+
+        let loc = '';
+
+        const lowerSumm = String(r.session_summary || '').toLowerCase();
+
+        if (lowerSumm.includes('bannerghatta road') || lowerSumm.includes('bannerghatta')) loc = 'Bannerghatta Road';
+
+        else if (lowerSumm.includes('mysore rd') || lowerSumm.includes('mysore road')) loc = 'Mysore Rd';
+
+        else if (lowerSumm.includes('ramanagara')) loc = 'Ramanagara';
+
+        else if (lowerSumm.includes('marathahalli')) loc = 'Marathahalli';
+
+        else if (lowerSumm.includes('kr puram') || lowerSumm.includes('k r puram')) loc = 'KR Puram';
+
+
+
+        const tr = document.createElement('tr');
+
+        tr.innerHTML = `
+
+          <td>${esc(r.lead_id)}</td>
+
+          <td>${esc(r.full_name)}</td>
+
+          <td class="cell-phone">${esc(r.phone)}</td>
+
+          <td>${esc(r.model)}</td>
+
+          <td>${esc(r.language)}</td>
+
+          <td>${esc(r.disposition_detail || r.disposition)}</td>
+
+          <td>${esc(r.summary)}</td>
+
+          <td>${esc(r.call_date)}</td>
+
+          <td>${esc(loc)}</td>
+
+        `;
+
+        tbody.appendChild(tr);
+
+      }
+
+      document.getElementById('convertedTableWrapper').style.display = 'block';
+
+      document.getElementById('convertedTableWrapper').classList.add('fade-in');
+
+    }
+
+
+
+    async function copyConvertedData() {
+
+      if (!convertedData.length) return;
+
+      const lines = [];
+
+
+
+      for (const r of convertedData) {
+
+        let loc = '';
+
+        const lowerSumm = String(r.session_summary || '').toLowerCase();
+
+        if (lowerSumm.includes('bannerghatta road') || lowerSumm.includes('bannerghatta')) loc = 'Bannerghatta Road';
+
+        else if (lowerSumm.includes('mysore rd') || lowerSumm.includes('mysore road')) loc = 'Mysore Rd';
+
+        else if (lowerSumm.includes('ramanagara')) loc = 'Ramanagara';
+
+        else if (lowerSumm.includes('marathahalli')) loc = 'Marathahalli';
+
+        else if (lowerSumm.includes('kr puram') || lowerSumm.includes('k r puram')) loc = 'KR Puram';
+
+
+
+        const cols = [
+
+          r.lead_id, r.full_name, r.phone, r.model, r.language, r.disposition_detail || r.disposition, r.summary, r.call_date, loc
+
+        ].map(v => String(v ?? '').replace(/\t/g, ' ').replace(/\n/g, ' '));
+
+        lines.push(cols.join('\t'));
+
+      }
+
+      const tsv = lines.join('\n');
+
+
+
+      try {
+
+        await navigator.clipboard.writeText(tsv);
+
+        const btn = document.getElementById('btnCopyConverted');
+
+        btn.textContent = 'Copied';
+
+        setTimeout(() => { btn.textContent = 'Copy Converted'; }, 2000);
+
+      } catch (e) {
+
+        console.error('Failed to copy converted table:', e);
+
+      }
+
+    }
+
+
+
+    // ─── RENDER TEST DRIVE TABLE ──────────────────────────────────────────────────
+
+    let testDriveData = [];
+
+
+
+    function renderTestDriveTable(data) {
+
+      testDriveData = data.filter(r => {
+
+        var s = (r.disposition || r.disposition_detail || r.summary || '').toLowerCase();
+
+        return s.includes('test drive completed') || s.includes('test-drive completed') || s.includes('completed test drive');
+
+      });
+
+
+
+      if (testDriveData.length === 0) {
+
+        document.getElementById('testDriveTableWrapper').style.display = 'none';
+
+        return;
+
+      }
+
+
+
+      const tbody = document.getElementById('testDriveBody');
+
+      tbody.innerHTML = '';
+
+
+
+      for (const r of testDriveData) {
+
+        const tr = document.createElement('tr');
+
+        tr.innerHTML = `
+
+          <td>${esc(r.lead_id)}</td>
+
+          <td class="cell-phone">${esc(r.phone)}</td>
+
+          <td>${esc(r.model)}</td>
+
+          <td>${esc(r.language)}</td>
+
+          <td>${esc(r.call_date)}</td>
+
+          <td>${esc(r.summary)}</td>
+
+        `;
+
+        tbody.appendChild(tr);
+
+      }
+
+      document.getElementById('testDriveTableWrapper').style.display = 'block';
+
+      document.getElementById('testDriveTableWrapper').classList.add('fade-in');
+
+    }
+
+
+
+    async function copyTestDriveData() {
+
+      if (!testDriveData.length) return;
+
+      const lines = [];
+
+
+
+      for (const r of testDriveData) {
+
+        const cols = [
+
+          r.lead_id, r.phone, r.model, r.language, r.call_date, r.summary
+
+        ].map(v => String(v ?? '').replace(/\t/g, ' ').replace(/\n/g, ' '));
+
+        lines.push(cols.join('\t'));
+
+      }
+
+      const tsv = lines.join('\n');
+
+
+
+      try {
+
+        await navigator.clipboard.writeText(tsv);
+
+        const btn = document.getElementById('btnCopyTestDrive');
+
+        btn.textContent = 'Copied';
+
+        setTimeout(() => { btn.textContent = 'Copy Test Drive'; }, 2000);
+
+      } catch (e) {
+
+        console.error('Failed to copy test drive table:', e);
+
+      }
+
+    }
+
+
+
+    function getPrioClass(disp) {
+
+      return getDispositionPriority(disp) >= 9 ? 'cell-terminal' : '';
+
+    }
+
+
+
+    function esc(str) {
+
+      return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    }
+
+
+
+    // ─── RENDER STATS ─────────────────────────────────────────────────────────────
+
+    function renderStats(data) {
+
+      const total = data.length;
+
+      const connected = data.filter(r => r.outcome === 'Connected').length;
+
+      const notConn = data.filter(r => r.outcome === 'Not Connected').length;
+
+      const excluded = data.filter(r => r.exclusion_flag === 'YES').length;
+
+      const withRec = data.filter(r => r.recordings).length;
+
+      const aiReady = data.filter(function(r) {
+        if (r.outcome !== 'Connected') return false;
+        var summ = (r.session_summary || '').trim();
+        var hist = (r.session_history || '').trim();
+        var hasText = (summ && summ !== 'No Response' && summ !== 'The session history is empty and contains no content to summarize.') || (hist && hist.length > 0);
+        return hasText && (r.disposition_detail || '').trim();
+      }).length;
+
+      const skipped = connected - aiReady;
+
+      document.getElementById('sTotal').textContent = total;
+
+      document.getElementById('sConnected').textContent = connected;
+
+      document.getElementById('sNotConn').textContent = notConn;
+
+      document.getElementById('sAiReady').textContent = aiReady;
+
+      document.getElementById('sSkipped').textContent = skipped;
+
+      document.getElementById('sExcluded').textContent = excluded;
+
+      document.getElementById('sRecording').textContent = withRec;
+
+
+
+      document.getElementById('statsBar').style.display = 'flex';
+
+      document.getElementById('statsBar').classList.add('fade-in');
+
+    }
+
+
+
+    function renderQualityReport(report) {
+
+      if (!report) return;
+
+
+
+      document.getElementById('qualityTitle').textContent = `Data quality - ${report.status}`;
+
+      document.getElementById('qualitySubtitle').textContent = report.subtitle;
+
+
+
+      document.getElementById('qualityMetrics').innerHTML = report.metrics.map(metric =>
+
+        `<div class="quality-metric ${esc(metric.tone)}">
+
+          <div class="label">${esc(metric.label)}</div>
+
+          <div class="value">${esc(metric.value)}</div>
+
+        </div>`
+
+      ).join('');
+
+
+
+      document.getElementById('qualityWarnings').innerHTML = report.warnings.map(item =>
+
+        `<div class="quality-item ${esc(item.level)}">
+
+          <strong>${esc(item.title)}</strong>
+
+          <small>${esc(item.detail)}</small>
+
+        </div>`
+
+      ).join('');
+
+
+
+      document.getElementById('qualitySamples').innerHTML = report.samples.map(section =>
+
+        `<div class="quality-item">
+
+          <strong>${esc(section.title)}</strong>
+
+          ${section.rows.map(row => `<small class="quality-sample">${esc(row)}</small>`).join('')}
+
+        </div>`
+
+      ).join('');
+
+
+
+      const card = document.getElementById('qualityCard');
+
+      card.style.display = 'block';
+
+      card.classList.add('fade-in');
+
+    }
+
+
+
+    async function copyQualityReport() {
+
+      if (!qualityReport) return;
+
+
+
+      const lines = [
+
+        `Data Quality Report - ${qualityReport.status}`,
+
+        '',
+
+        'Metrics',
+
+        ...qualityReport.metrics.map(metric => `${metric.label}: ${metric.value}`),
+
+        '',
+
+        'Warnings',
+
+        ...qualityReport.warnings.map(item => `${item.title}: ${item.detail}`),
+
+        '',
+
+        'Reconciliation Samples',
+
+        ...qualityReport.samples.flatMap(section => [
+
+          section.title,
+
+          ...section.rows.map(row => `- ${row}`)
+
+        ])
+
+      ];
+
+
+
+      try {
+
+        await navigator.clipboard.writeText(lines.join('\n'));
+
+        const btn = document.getElementById('btnCopyQuality');
+
+        btn.textContent = 'Copied';
+
+        setTimeout(() => { btn.textContent = 'Copy Report'; }, 2000);
+
+      } catch (e) {
+
+        console.error('Failed to copy quality report:', e);
+
+      }
+
+    }
+
+
+
+    function getDataRows(data, includeHeader) {
+
+      var cfg = getActiveDealerConfig();
+
+      var keys = cfg.columns.map(function(c) { return c.key; });
+
+      var rows = includeHeader !== false ? [cfg.columns.map(function(c) { return c.header; })] : [];
+
+      for (var ri = 0; ri < data.length; ri++) {
+
+        var r = data[ri];
+
+        var row = [];
+
+        for (var ki = 0; ki < keys.length; ki++) {
+
+          row.push(typeof r[keys[ki]] === 'string' ? r[keys[ki]].trim() : (r[keys[ki]] ?? ''));
+
+        }
+
+        rows.push(row);
+
+      }
+
+      return rows;
+
+    }
+
+
+
+    // ─── EXPORT TO EXCEL ──────────────────────────────────────────────────────────
+
+    async function exportToExcel() {
+
+      if (!processedData.length) return;
+
+
+
+      var dataRows = getDataRows(getSortedData(processedData), true);
+
+      var ws = XLSX.utils.aoa_to_sheet(dataRows);
+
+      var wb = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(wb, ws, "Processed Leads");
+
+      var summaryRows = [[
+
+        'Full_Name', 'Phone', 'Outcome', 'Disposition', 'Disposition_detail', 'Manual_Disposition_detail', 'Summary', 'Call_Date', 'Session_Summary', 'Call_Duration', 'Channel'
+
+      ]];
+
+      for (var ri = 0; ri < processedData.length; ri++) {
+
+        var r = processedData[ri];
+
+        summaryRows.push([
+
+          r.full_name, r.phone, r.outcome, r.disposition, r.disposition_detail || '', r.manual_disposition_detail || '', r.summary, r.call_date, r.session_summary || '', r.call_duration || '', r.channel || ''
+
+        ].map(function(v) { return typeof v === 'string' ? v.trim() : v; }));
+
+      }
+
+      var summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+
+      XLSX.utils.book_append_sheet(wb, summaryWs, "Summary Source");
+
+      wb.Workbook = wb.Workbook || {};
+
+      wb.Workbook.Sheets = wb.SheetNames.map(function(name, index) { return { name: name, Hidden: index === 1 ? 1 : 0 }; });
+
+      XLSX.writeFile(wb, "AutoNage_Disposition_Sync.xlsx");
+
+    }
+
+
+
+    // ─── COPY TO CLIPBOARD ────────────────────────────────────────────────────────
+
+    async function copyData() {
+
+      if (!processedData.length) return;
+
+      var dataRows = getDataRows(getSortedData(processedData), false);
+
+      var tsv = dataRows.map(function(row) {
+
+        return row.map(function(v) { return String(v ?? '').replace(/\t/g, ' ').replace(/\n/g, ' '); }).join('\t');
+
+      }).join('\n');
+
+
+
+      try {
+
+        await navigator.clipboard.writeText(tsv);
+
+        showCopyFeedback('ok');
+
+      } catch {
+
+        const ta = document.createElement('textarea');
+
+        ta.value = tsv;
+
+        ta.style.position = 'fixed';
+
+        ta.style.left = '-9999px';
+
+        document.body.appendChild(ta);
+
+        ta.focus();
+
+        ta.select();
+
+        try {
+
+          document.execCommand('copy');
+
+          showCopyFeedback('ok');
+
+        } catch {
+
+          showCopyFeedback('warn');
+
+        }
+
+        document.body.removeChild(ta);
+
+      }
+
+    }
+
+
+
+    function showCopyFeedback(type) {
+
+      const msg = type === 'ok'
+
+        ? 'Copied. Paste with Ctrl+V in Zoho.'
+
+        : 'Auto-copy failed. Select and copy the table manually.';
+
+      setStatus('globalStatus', msg, type);
+
+      const btn = document.getElementById('btnCopy');
+
+      if (!btn.dataset.origContent) btn.dataset.origContent = btn.innerHTML;
+
+      btn.textContent = 'Copied';
+
+      setTimeout(() => { btn.innerHTML = btn.dataset.origContent; }, 2000);
+
+    }
+
+
+
+    // ─── RESET ────────────────────────────────────────────────────────────────────
+
+    function resetAll() {
+
+      rawFile1 = null; rawFile2 = null; processedData = []; qualityReport = null;
+
+      currentSortKey = 'full_name'; currentSortDir = 'asc';
+
+      updateSortIndicators();
+
+      ['f1', 'f2'].forEach(id => { document.getElementById(id).value = ''; });
+
+      ['dz1', 'dz2'].forEach(id => { document.getElementById(id).classList.remove('has-file'); });
+
+      ['st1', 'st2'].forEach(id => {
+
+        const el = document.getElementById(id);
+
+        el.className = 'dz-status';
+
+        el.textContent = 'Drag & drop or click to browse';
+
+      });
+
+      document.getElementById('outputBody').innerHTML = '';
+
+      document.getElementById('convertedBody').innerHTML = '';
+
+      document.getElementById('testDriveBody').innerHTML = '';
+
+      document.getElementById('qualityMetrics').innerHTML = '';
+
+      document.getElementById('qualityWarnings').innerHTML = '';
+
+      document.getElementById('qualitySamples').innerHTML = '';
+
+      document.getElementById('tableWrapper').style.display = 'none';
+
+      document.getElementById('convertedTableWrapper').style.display = 'none';
+
+      document.getElementById('testDriveTableWrapper').style.display = 'none';
+
+      document.getElementById('statsBar').style.display = 'none';
+
+      document.getElementById('qualityCard').style.display = 'none';
+
+      document.getElementById('btnCopy').style.display = 'none';
+
+      document.getElementById('btnExport').style.display = 'none';
+
+      document.getElementById('btnValidateAI').style.display = 'none';
+
+      document.getElementById('btnValidateAI').textContent = 'Validate with AI';
+
+      document.getElementById('btnValidateAI').onclick = function() { validateDispositionsWithLLM(); };
+
+      document.getElementById('btnReset').style.display = 'none';
+
+      document.getElementById('btnCopyQuality').textContent = 'Copy Report';
+
+      document.getElementById('btnProcess').disabled = true;
+
+      document.getElementById('btnProcess').classList.remove('ready');
+
+      ['pill1', 'pill2', 'pill3', 'pill4'].forEach(id => document.getElementById(id).classList.remove('active'));
+
+      setStatus('globalStatus', '', '');
+
+    }
+
+
+
+    // ─── UI HELPERS ───────────────────────────────────────────────────────────────
+
+    function setStatus(id, msg, type) {
+
+      const el = document.getElementById(id);
+
+      if (!el) return;
+
+      el.textContent = msg;
+
+      el.className = 'status-msg' + (type ? ' ' + type : '');
+
+    }
+
+
+
+    function showOverlay(msg, total) {
+
+      isProcessing = true;
+
+      document.getElementById('processingMsg').textContent = msg;
+
+      document.getElementById('processingOverlay').style.display = 'flex';
+
+      var track = document.getElementById('progressTrack');
+
+      var counter = document.getElementById('progressCounter');
+
+      if (typeof total !== 'undefined' && total > 0) {
+
+        track.style.display = 'block';
+
+        counter.style.display = 'inline';
+
+        counter.textContent = '0/' + total;
+
+        document.getElementById('progressFill').style.width = '0%';
+
+      } else {
+
+        track.style.display = 'none';
+
+        counter.style.display = 'none';
+
+      }
+
+    }
+
+
+
+    function hideOverlay() {
+
+      isProcessing = false;
+
+      document.getElementById('processingOverlay').style.display = 'none';
+
+    }
+
+
+
+    // ── AI Validation Status Bar (non-blocking) ──────────────────────────
+
+    let _aiStatusStartTime = 0;
+
+    let _aiStatusTimer = null;
+
+    let _aiStatusActive = false;
+
+
+
+    function showAiStatusBar(total) {
+
+      if (_aiStatusTimer) { clearInterval(_aiStatusTimer); _aiStatusTimer = null; }
+
+      _aiStatusActive = true;
+
+      _aiStatusStartTime = Date.now();
+
+      var bar = document.getElementById('aiValidationStatus');
+
+      var msg = document.getElementById('aiStatusMsg');
+
+      var batch = document.getElementById('aiStatusBatch');
+
+      var corrected = document.getElementById('aiStatusCorrected');
+
+      var elapsed = document.getElementById('aiStatusElapsed');
+
+      var fill = document.getElementById('aiStatusFill');
+
+      var actions = document.getElementById('aiStatusActions');
+
+      
+
+      bar.style.display = 'block';
+
+      bar.className = 'ai-status-bar';
+
+      msg.textContent = 'AI validating ' + total + ' dispositions…';
+
+      msg.className = 'ai-status-msg';
+
+      var numBatches = Math.ceil(total / LLM_DISPOSITION_BATCH_SIZE);
+      batch.textContent = '0/' + numBatches + ' batches';
+
+      batch.className = 'ai-status-badge';
+
+      corrected.style.display = 'none';
+
+      fill.style.width = '0%';
+
+      fill.className = 'ai-status-fill';
+
+      
+
+      // Reset actions to just the cancel button
+
+      actions.innerHTML = '<button class="ai-status-btn cancel" id="aiStatusCancel" onclick="cancelAiValidation()">Cancel</button>';
+
+      
+
+      // Start elapsed timer
+
+      if (_aiStatusTimer) clearInterval(_aiStatusTimer);
+
+      _aiStatusTimer = setInterval(function() {
+
+        var secs = Math.floor((Date.now() - _aiStatusStartTime) / 1000);
+
+        var min = Math.floor(secs / 60);
+
+        var s = secs % 60;
+
+        elapsed.textContent = (min > 0 ? min + 'm ' : '') + s + 's';
+
+      }, 1000);
+
+      
+
+      // Create abort controller for this run
+
+      aiValidationController = new AbortController();
+
+    }
+
+
+
+    function updateAiStatusBar(done, total, message, pct, correctedResults) {
+
+      var batch = document.getElementById('aiStatusBatch');
+
+      var fill = document.getElementById('aiStatusFill');
+
+      var msg = document.getElementById('aiStatusMsg');
+
+      var corrected = document.getElementById('aiStatusCorrected');
+
+      
+
+      if (batch) batch.textContent = done + '/' + total;
+
+      if (fill) fill.style.width = pct + '%';
+
+      if (msg) msg.textContent = message || 'AI validating…';
+
+      
+
+      // Show live corrected count
+
+      if (correctedResults) {
+
+        var count = Object.keys(correctedResults).length;
+
+        if (count > 0) {
+
+          corrected.style.display = 'inline';
+
+          corrected.textContent = count + ' corrected';
+
+        }
+
+      }
+
+    }
+
+
+
+    function hideAiStatusBar(correctedResults) {
+
+      if (_aiStatusTimer) {
+
+        clearInterval(_aiStatusTimer);
+
+        _aiStatusTimer = null;
+
+      if (!_aiStatusActive) return;
+
+      _aiStatusActive = false;
+
+      }
+
+      
+
+      if (aiValidationController && aiValidationController.signal.aborted) {
+
+        // Show cancelled state
+
+        var bar = document.getElementById('aiValidationStatus');
+
+        var msg = document.getElementById('aiStatusMsg');
+
+        var batch = document.getElementById('aiStatusBatch');
+
+        var fill = document.getElementById('aiStatusFill');
+
+        var actions = document.getElementById('aiStatusActions');
+
+        
+
+        bar.className = 'ai-status-bar aborted';
+
+        msg.textContent = 'AI validation cancelled.';
+
+        msg.className = 'ai-status-msg err';
+
+        fill.className = 'ai-status-fill err';
+
+        actions.innerHTML = '<button class="ai-status-btn" onclick="document.getElementById(\'aiValidationStatus\').style.display=\'none\'">Dismiss</button>' +
+
+          '<button class="ai-status-btn primary" onclick="validateDispositionsWithLLM()">↻ Run again</button>';
+
+        aiValidationController = null;
+
+        return;
+
+      }
+
+      
+
+      var correctedCount = correctedResults ? Object.keys(correctedResults).length : 0;
+
+      var totalDone = document.getElementById('aiStatusBatch');
+
+      var totalText = totalDone ? totalDone.textContent : 'done';
+
+      
+
+      var bar = document.getElementById('aiValidationStatus');
+
+      var msg = document.getElementById('aiStatusMsg');
+
+      var batch = document.getElementById('aiStatusBatch');
+
+      var fill = document.getElementById('aiStatusFill');
+
+      var elapsed = document.getElementById('aiStatusElapsed');
+
+      var actions = document.getElementById('aiStatusActions');
+
+      var corrected = document.getElementById('aiStatusCorrected');
+
+      
+
+      bar.className = 'ai-status-bar';
+
+      msg.textContent = correctedCount > 0
+
+        ? 'AI validation complete — ' + correctedCount + ' disposition(s) corrected. Review the Manual_Disposition_detail column.'
+
+        : 'AI validation complete — all dispositions appear correct.';
+
+      msg.className = 'ai-status-msg ok';
+
+      batch.textContent = totalText;
+
+      batch.className = 'ai-status-badge done';
+
+      if (corrected) {
+
+        corrected.style.display = correctedCount > 0 ? 'inline' : 'none';
+
+        if (correctedCount > 0) corrected.textContent = correctedCount + ' corrected';
+
+      }
+
+      fill.className = 'ai-status-fill ok';
+
+      fill.style.width = '100%';
+
+      
+
+      // Update elapsed one last time
+
+      if (elapsed) {
+
+        var secs = Math.floor((Date.now() - _aiStatusStartTime) / 1000);
+
+        var min = Math.floor(secs / 60);
+
+        var s = secs % 60;
+
+        elapsed.textContent = (min > 0 ? min + 'm ' : '') + s + 's';
+
+      }
+
+      
+
+      // Change actions: dismiss + re-run
+
+      actions.innerHTML = '<button class="ai-status-btn" onclick="document.getElementById(\'aiValidationStatus\').style.display=\'none\'">Dismiss</button>' +
+
+        '<button class="ai-status-btn primary" onclick="validateDispositionsWithLLM(true)">↻ Re-run AI</button>';
+
+      
+
+      aiValidationController = null;
+
+    }
+
+
+
+    function tick() { return new Promise(r => setTimeout(r, 20)); }
+
+
+
+    function updateProcessBtn() {
+
+      document.getElementById('btnProcess').disabled = !(rawFile1 && rawFile2);
+
+      updateStepPills();
+
+    }
+
+
+
+    function setFileStatus(id, filename) {
+
+      const el = document.getElementById(id);
+
+      if (!el) return;
+
+      el.className = 'dz-status ok';
+
+      el.textContent = `Loaded: ${filename}`;
+
+    }
+
+
+
+    // ─── FILE INPUT HANDLING ──────────────────────────────────────────────────────
+
+    function updateStepPills() {
+
+      const p1 = document.getElementById('pill1');
+
+      const p2 = document.getElementById('pill2');
+
+      const p3 = document.getElementById('pill3');
+
+      const p4 = document.getElementById('pill4');
+
+      if (rawFile1) p1.classList.add('active'); else p1.classList.remove('active');
+
+      if (rawFile2) p2.classList.add('active'); else p2.classList.remove('active');
+
+      if (rawFile1 && rawFile2) {
+
+        p3.classList.add('active');
+
+        document.getElementById('btnProcess').classList.add('ready');
+
+      } else {
+
+        p3.classList.remove('active');
+
+        document.getElementById('btnProcess').classList.remove('ready');
+
+      }
+
+    }
+
+
+
+    document.getElementById('f1').addEventListener('change', async function () {
+
+      if (!this.files[0]) return;
+      if (!validateFileSize(this.files[0])) { this.value = ''; return; }
+
+      rawFile1 = this.files[0];
+
+      setFileStatus('st1', rawFile1.name);
+
+      document.getElementById('dz1').classList.add('has-file');
+
+      updateProcessBtn();
+
+      updateStepPills();
+
+
+
+      // Auto-detect last_session_id from the lead file
+
+      try {
+
+        const ab = await readFileAsArrayBuffer(rawFile1);
+
+        const rows = parseSheet(ab);
+
+        if (rows.length) {
+
+          const idCandidates = ['last_session_id', 'session_id'];
+
+          let idCol = null;
+
+          for (const c of idCandidates) {
+
+            if (rows[0].hasOwnProperty(c)) { idCol = c; break; }
+
+          }
+
+          if (idCol) {
+
+            let maxId = 0;
+
+            for (const row of rows) {
+
+              const raw = String(row[idCol] || '').trim();
+
+              const num = parseInt(raw, 10);
+
+              if (!isNaN(num) && num > maxId) maxId = num;
+
+            }
+
+            if (maxId > 0) {
+
+              const nextId = maxId + 1;
+
+              document.getElementById('leadIdStart').value = nextId;
+
+              setStatus('globalStatus', `Lead ID auto-set to ${nextId} (from last_session_id max: ${maxId})`, 'ok');
+
+            }
+
+          }
+
+        }
+
+      } catch (e) {
+
+        console.warn('Could not auto-detect last_session_id:', e);
+
+      }
+
+    });
+
+
+
+    document.getElementById('f2').addEventListener('change', function () {
+
+      if (!this.files[0]) return;
+      if (!validateFileSize(this.files[0])) { this.value = ''; return; }
+
+      rawFile2 = this.files[0];
+
+      setFileStatus('st2', rawFile2.name);
+
+      document.getElementById('dz2').classList.add('has-file');
+
+      updateProcessBtn();
+
+      updateStepPills();
+
+    });
+
+
+
+    // ─── DRAG AND DROP ────────────────────────────────────────────────────────────
+
+    function setupDragDrop(dzId, fileInputId) {
+
+      const dz = document.getElementById(dzId);
+
+      const fi = document.getElementById(fileInputId);
+
+
+
+      dz.addEventListener('dragover', e => {
+
+        e.preventDefault();
+
+        dz.classList.add('drag-over');
+
+      });
+
+      dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+
+      dz.addEventListener('drop', e => {
+
+        e.preventDefault();
+
+        dz.classList.remove('drag-over');
+
+        const file = e.dataTransfer.files[0];
+
+        if (!file) return;
+
+        const dt = new DataTransfer();
+
+        dt.items.add(file);
+
+        fi.files = dt.files;
+
+        fi.dispatchEvent(new Event('change'));
+
+      });
+
+
+
+      dz.addEventListener('keydown', e => {
+
+        if (e.key === 'Enter' || e.key === ' ') fi.click();
+
+      });
+
+    }
+
+
+
+    setupDragDrop('dz1', 'f1');
+
+    setupDragDrop('dz2', 'f2');
+
+
+
+    /* ── THEME ────────────────────────────────────────────────────────── */
+
+    function syncBrandLogo(t) {
+
+      document.querySelectorAll('.brand-mark img').forEach(img => {
+
+        if (img.dataset.darkLogo) img.src = t === 'dark' ? img.dataset.darkLogo : img.dataset.lightLogo;
+
+      });
+
+    }
+
+    function applyTheme(t) {
+
+      document.documentElement.setAttribute('data-theme', t);
+
+      localStorage.setItem('jejo-theme', t);
+
+      syncBrandLogo(t);
+
+    }
+
+    function toggleTheme() {
+
+      const cur = document.documentElement.getAttribute('data-theme');
+
+      applyTheme(cur === 'dark' ? 'light' : 'dark');
+
+    }
+
+    applyTheme(localStorage.getItem('jejo-theme') || 'dark');
+
+    renderTableHeader();
+
+    syncApiKeyControl();
+
+
+
+    // ─── INTERACTIVE DOODLE GUIDE ────────────────────────────────────────────
+
+    function cleanGuideArrow(sx, sy, ex, ey) {
+
+      // Clean bezier curve with a slight arc - no randomness
+
+      var cx = (sx + ex) / 2;
+
+      var cy = (sy + ey) / 2 - 20;
+
+      return 'M' + sx + ',' + sy + ' Q' + cx + ',' + cy + ' ' + ex + ',' + ey;
+
+    }
+
+
+
+    const guideSteps = [
+
+      {
+
+        selector: '#dz1',
+
+        title: 'Upload Audience & Leads',
+
+        desc: 'Drop your AutoEngage Audience & Leads export here. This file contains lead info, dispositions, model preferences, and seating capacity.',
+
+        arrow: cleanGuideArrow
+
+      },
+
+      {
+
+        selector: '#dz2',
+
+        title: 'Upload Sessions',
+
+        desc: 'Drop the Sessions export here. It provides call summaries, recording URLs, sentiment scores, and channel info per phone number.',
+
+        arrow: cleanGuideArrow
+
+      },
+
+      {
+
+        selector: '#btnProcess',
+
+        title: 'Process Both Files',
+
+        desc: 'Once both files are uploaded, click this to merge them into the Zoho Master Sheet format with business rules applied automatically.',
+
+        arrow: cleanGuideArrow
+
+      },
+
+      {
+
+        selector: '#dealerSelect',
+
+        title: 'Choose Dealership',
+
+        desc: 'Select your dealership from this dropdown. It controls the output column layout, business rules, and summary source column.',
+
+        arrow: cleanGuideArrow
+
+      },
+
+      {
+
+        selector: '#btnCopy',
+
+        title: 'Copy All Data',
+
+        desc: 'After processing, click here to copy the entire output table to clipboard. Then paste directly into your Zoho Master Sheet.',
+
+        arrow: cleanGuideArrow
+
+      },
+
+      {
+
+        selector: '#btnExport',
+
+        title: 'Export Excel',
+
+        desc: 'Prefer a file? This exports the processed data as a .xlsx file with all columns and formatting ready to download.',
+
+        arrow: cleanGuideArrow
+
+      },
+
+      {
+
+        selector: '#btnReset',
+
+        title: 'Reset',
+
+        desc: 'Clears all uploaded files, processed data, stats, and tables so you can start a fresh batch from scratch.',
+
+        arrow: cleanGuideArrow
+
+      }
+
+    ];
+
+
+
+    var guideCurrentStep = 0;
+
+    var guideActive = false;
+
+    var guideUnhiddenEl = null;      // element currently made visible by guide
+
+    var guideUnhiddenOrig = '';      // its original display value
+
+
+
+    function guideRestoreUnhidden() {
+
+      if (guideUnhiddenEl) {
+
+        guideUnhiddenEl.style.display = guideUnhiddenOrig;
+
+        guideUnhiddenEl.style.visibility = '';
+
+        guideUnhiddenEl = null;
+
+        guideUnhiddenOrig = '';
+
+      }
+
+    }
+
+
+
+    function startGuide() {
+
+      guideCurrentStep = 0;
+
+      guideActive = true;
+
+      guideUnhiddenEl = null;
+
+      guideUnhiddenOrig = '';
+
+      document.getElementById('guideOverlay').classList.add('active');
+
+      document.body.style.overflow = 'hidden';
+
+      updateGuideStep();
+
+    }
+
+
+
+    function exitGuide() {
+
+      guideRestoreUnhidden();
+
+      guideActive = false;
+
+      document.getElementById('guideOverlay').classList.remove('active');
+
+      document.getElementById('guideHighlight').classList.remove('show');
+
+      document.getElementById('guideCard').classList.remove('show');
+
+      document.getElementById('guideArrowSvg').innerHTML = '';
+
+      document.body.style.overflow = '';
+
+    }
+
+
+
+    function nextGuideStep() {
+
+      if (guideCurrentStep < guideSteps.length - 1) {
+
+        guideCurrentStep++;
+
+        updateGuideStep();
+
+      }
+
+    }
+
+
+
+    function prevGuideStep() {
+
+      if (guideCurrentStep > 0) {
+
+        guideCurrentStep--;
+
+        updateGuideStep();
+
+      }
+
+    }
+
+
+
+    function updateGuideStep() {
+
+      var step = guideSteps[guideCurrentStep];
+
+      var el = document.querySelector(step.selector);
+
+      if (!el) return;
+
+
+
+      // Restore previously unhidden element only if it's not the current one
+
+      if (guideUnhiddenEl && guideUnhiddenEl !== el) {
+
+        guideRestoreUnhidden();
+
+      }
+
+
+
+      // If element is hidden, make it VISIBLE so user can see it
+
+      if (el.style.display === 'none' || getComputedStyle(el).display === 'none') {
+
+        guideUnhiddenEl = el;
+
+        guideUnhiddenOrig = el.style.display;
+
+        el.style.display = 'inline-flex';
+
+        el.style.visibility = 'visible';
+
+      }
+
+
+
+      // Position highlight around target
+
+      var hl = document.getElementById('guideHighlight');
+
+      var rect = el.getBoundingClientRect();
+
+      var pad = 6;
+
+      hl.style.left = (rect.left - pad) + 'px';
+
+      hl.style.top = (rect.top - pad) + 'px';
+
+      hl.style.width = (rect.width + pad * 2) + 'px';
+
+      hl.style.height = (rect.height + pad * 2) + 'px';
+
+      hl.style.borderRadius = Math.max(8, getComputedStyle(el).borderRadius ? parseInt(getComputedStyle(el).borderRadius) : 8) + 'px';
+
+      hl.classList.add('show');
+
+
+
+      // Update card content
+
+      document.getElementById('guideCardTitle').innerHTML =
+
+        esc(step.title) + ' <span class="guide-card-step">' + (guideCurrentStep + 1) + ' of ' + guideSteps.length + '</span>';
+
+      document.getElementById('guideCardDesc').textContent = step.desc;
+
+
+
+      // Enable/disable prev/next buttons
+
+      document.getElementById('guidePrevBtn').style.opacity = guideCurrentStep === 0 ? '0.35' : '1';
+
+      document.getElementById('guideNextBtn').style.opacity = guideCurrentStep === guideSteps.length - 1 ? '0.35' : '1';
+
+
+
+      // Position the card below the target element with a gap
+
+      var card = document.getElementById('guideCard');
+
+      var cardW = Math.min(340, window.innerWidth - 32);
+
+      var targetCenterX = rect.left + rect.width / 2;
+
+      var cardLeft = Math.max(16, Math.min(window.innerWidth - cardW - 16, targetCenterX - cardW / 2));
+
+      var cardTop = rect.bottom + 20;
+
+
+
+      // If card would go off the bottom, place it above
+
+      var cardH = 200;
+
+      if (cardTop + cardH > window.innerHeight - 20) {
+
+        cardTop = Math.max(16, rect.top - cardH - 20);
+
+      }
+
+
+
+      card.style.left = cardLeft + 'px';
+
+      card.style.top = cardTop + 'px';
+
+      card.style.maxWidth = cardW + 'px';
+
+      card.classList.add('show');
+
+
+
+      // Draw doodle arrow from card to target
+
+      var svg = document.getElementById('guideArrowSvg');
+
+      var cardCenterX = cardLeft + cardW / 2;
+
+      var cardEdgeY, targetEdgeX, targetEdgeY;
+
+      var arrowFromX, arrowFromY;
+
+
+
+      if (cardTop > rect.bottom) {
+
+        // Card is below target — arrow goes from card top to target bottom
+
+        cardEdgeY = cardTop;
+
+        arrowFromX = cardCenterX + (Math.random() - 0.5) * 40;
+
+        arrowFromY = cardEdgeY;
+
+        targetEdgeX = targetCenterX + (Math.random() - 0.5) * 30;
+
+        targetEdgeY = rect.bottom;
+
+      } else {
+
+        // Card is above target — arrow goes from card bottom to target top
+
+        cardEdgeY = cardTop + cardH;
+
+        arrowFromX = cardCenterX + (Math.random() - 0.5) * 40;
+
+        arrowFromY = cardEdgeY;
+
+        targetEdgeX = targetCenterX + (Math.random() - 0.5) * 30;
+
+        targetEdgeY = rect.top;
+
+      }
+
+
+
+      var pathData = step.arrow(arrowFromX, arrowFromY, targetEdgeX, targetEdgeY);
+
+
+
+      // Add arrowhead
+
+      var headSize = 10;
+
+      var headAngle = Math.atan2(targetEdgeY - arrowFromY, targetEdgeX - arrowFromX);
+
+      var hx1 = targetEdgeX - headSize * Math.cos(headAngle - 0.45);
+
+      var hy1 = targetEdgeY - headSize * Math.sin(headAngle - 0.45);
+
+      var hx2 = targetEdgeX - headSize * Math.cos(headAngle + 0.45);
+
+      var hy2 = targetEdgeY - headSize * Math.sin(headAngle + 0.45);
+
+
+
+      svg.innerHTML = '' +
+
+        '<defs>' +
+
+          '<filter id="guideShadow" x="-2" y="-2" width="4" height="4">' +
+
+            '<feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="rgba(239,68,68,0.4)" flood-opacity="1"/>' +
+
+          '</filter>' +
+
+        '</defs>' +
+
+        '<path d="' + pathData + '" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#guideShadow)" opacity="0.9"/>' +
+
+        '<path d="M' + targetEdgeX + ',' + targetEdgeY + ' L' + hx1 + ',' + hy1 + ' L' + hx2 + ',' + hy2 + ' Z" fill="#ef4444" opacity="0.9"/>';
+
+
+
+      // Scroll target into view only if truly out of view — instant, no smooth animation
+
+      if (rect.top < 0 || rect.bottom > window.innerHeight - 100) {
+
+        el.scrollIntoView({ block: 'nearest' });
+
+      }
+
+    }
+
+
+
+    // Keyboard shortcuts
+
+    document.addEventListener('keydown', function(e) {
+
+      if (!guideActive) return;
+
+      if (e.key === 'Escape') {
+
+        exitGuide();
+
+        e.preventDefault();
+
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+
+        nextGuideStep();
+
+        e.preventDefault();
+
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+
+        prevGuideStep();
+
+        e.preventDefault();
+
+      }
+
+    });
+
+
+
+    // Window resize handler — reposition on resize
+
+    window.addEventListener('resize', function() {
+
+      if (guideActive) updateGuideStep();
+
+    });
+
+  </script>
+
+</body>
+
+
+
+</html>
+

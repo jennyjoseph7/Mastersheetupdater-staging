@@ -1,0 +1,4438 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+
+
+<head>
+
+  <meta charset="UTF-8" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+
+  
+
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' http://localhost:3456; form-action 'self'; base-uri 'self'; object-src 'none'; " />
+
+  <script>
+
+    (function () {
+
+      var theme = localStorage.getItem('jejo-theme') || 'dark';
+
+      document.documentElement.setAttribute('data-theme', theme);
+
+    })();
+
+  </script>
+
+  <title>Post-Sales Disposition Sync - AutoNage</title>
+
+  <meta name="description"
+
+    content="Merges post-sales AutoEngage lead and session exports into a dealership-specific Zoho Master Sheet-ready output." />
+
+  <link rel="stylesheet" href="../assets/fonts/fonts.css" />
+
+  <script src="../assets/js/vendor/xlsx.full.min.js"></script>
+  <script>
+    (function() {
+      function requireAuth() {
+        var token = sessionStorage.getItem('gryd_token');
+        var expiry = sessionStorage.getItem('gryd_expiry');
+        if (!token || !expiry || parseInt(expiry) <= Math.floor(Date.now() / 1000)) {
+          window.location.replace('../login.html');
+          return false;
+        }
+        return true;
+      }
+      requireAuth();
+      window.addEventListener('pageshow', function() { requireAuth(); });
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') requireAuth();
+      });
+      window.addEventListener('unload', function() {});
+    })();
+  </script>
+
+  <script src="../assets/js/lib/history-helpers.js"></script>
+
+  <script src="../assets/js/lib/llm-batch-runner.js?v=20260610-ratelimit"></script>
+
+  <script src="../assets/js/lib/ai-config.js?v=20260613"></script>
+  <script src="../config.js?v=20260610"></script>
+
+  <link rel="stylesheet" href="../assets/styles/post-sales-disposition.css" />
+
+</head>
+
+
+
+<body>
+
+  <div class="processing-overlay" id="processingOverlay">
+
+    <div class="processing-card">
+
+      <div class="spinner"></div>
+
+      <span id="processingMsg">Processing files...</span>
+
+      <div class="progress-track" id="progressTrack" style="display:none;width:100%;height:6px;background:var(--surface3);border-radius:999px;overflow:hidden;margin-top:0.5rem;">
+
+        <div class="progress-fill" id="progressFill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent-dim));border-radius:999px;transition:width 0.4s ease;"></div>
+
+      </div>
+
+      <span id="progressCounter" style="display:none;font-size:0.78rem;color:var(--text-muted);"></span>
+
+    </div>
+
+  </div>
+
+
+
+  <header>
+
+    <div class="header-inner">
+
+      <div class="header-left">
+
+        <a class="brand-mark" href="../index.html" aria-label="Go to home"><img src="../assets/images/AN Dark.png" data-light-logo="../assets/images/AN.png" data-dark-logo="../assets/images/AN Dark.png" alt="AutoNage"></a>
+
+        <div>
+
+          <h1>Post-Sales Sync</h1>
+
+          <div class="header-sub">AutoEngage → Zoho Master Sheet</div>
+
+        </div>
+
+      </div>
+
+      <div class="header-right">
+
+        <div id="navContainer"></div>
+<script>loadNavSafe("navContainer");</script>
+
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+
+          <svg class="icon-moon" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+
+            stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round"
+
+              d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+
+          </svg>
+
+          <svg class="icon-sun" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+
+            stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round"
+
+              d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+
+          </svg>
+
+        </button>
+
+      </div>
+
+    </div>
+
+  </header>
+
+
+
+  <main>
+
+    <section class="workflow-panel">
+
+      <div class="section-head">
+
+        <div>
+
+          <div class="eyebrow">Step 1</div>
+
+          <div class="section-title">Prepare the post-sales batch</div>
+
+        </div>
+
+        <div class="section-note">Select the dealership workflow, upload the Leads and Sessions exports, then process.
+
+          The selected dealership is written into every output row.</div>
+
+      </div>
+
+
+
+      <div class="upload-grid">
+
+        <div class="drop-zone" id="dz1" onclick="document.getElementById('f1').click()" role="button" tabindex="0"
+
+          aria-label="Upload post-sales leads export">
+
+          <div class="dz-icon" aria-hidden="true">
+
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+
+              <path stroke-linecap="round" stroke-linejoin="round"
+
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+
+            </svg>
+
+          </div>
+
+          <div class="dz-label">File 1 - Leads</div>
+
+          <div class="dz-sublabel">Post-sales service reminder or feedback reminder lead export</div>
+
+          <div class="dz-cols" id="leadCols">campaign_id - phone_number - vehicle_model - next_service_due</div>
+
+          <div class="dz-status" id="st1">Drag and drop or click to browse</div>
+
+          <input type="file" id="f1" accept=".csv,.xlsx,.xls">
+
+        </div>
+
+
+
+        <div class="drop-zone" id="dz2" onclick="document.getElementById('f2').click()" role="button" tabindex="0"
+
+          aria-label="Upload sessions export">
+
+          <div class="dz-icon" aria-hidden="true">
+
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+
+              <path stroke-linecap="round" stroke-linejoin="round"
+
+                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+
+            </svg>
+
+          </div>
+
+          <div class="dz-label">File 2 - Sessions</div>
+
+          <div class="dz-sublabel">AutoEngage sessions export for the same campaign batch</div>
+
+          <div class="dz-cols" id="sessionCols">status - duration - start_time - summary - history - disposition_detail</div>
+
+          <div class="dz-status" id="st2">Drag and drop or click to browse</div>
+
+          <input type="file" id="f2" accept=".csv,.xlsx,.xls">
+
+        </div>
+
+      </div>
+
+
+
+      <div class="action-bar">
+
+        <div class="control-group">
+
+          <span class="control-label">Dealership</span>
+
+          <div class="select-wrapper">
+
+            <select id="dealerSelect" onchange="handleDealerChange()">
+
+              <optgroup label="Post-sales service reminder">
+
+                <option value="ambal_service">Ambal - Post-Sales Service Reminder</option>
+
+                <option value="bullmen_service">Bullmen - Post-Sales Service Reminder</option>
+
+                <option value="fortune_service">Fortune - Post-Sales Service Reminder</option>
+
+                <option value="perfect_riders_service">Perfect Riders - Post-Sales Service Reminder</option>
+
+                <option value="pressana_service_feedback">Pressana - Post-Sales Service Reminder
+
+                </option>
+
+                <option value="suryabala_service">Suryabala Honda - Post-Sales Service Reminder</option>
+
+              </optgroup>
+
+              <optgroup label="Post-sales feedback reminder">
+
+                <option value="icare_feedback">Icare - Post-Sales Feedback Reminder</option>
+
+                <option value="pressana_post_service_feedback">Pressana Kia - Post Service Feedback</option>
+
+              </optgroup>
+
+
+
+            </select>
+
+          </div>
+
+        </div>
+
+        <div class="control-group">
+
+          <span class="control-label">Lead ID</span>
+
+          <input type="number" class="lead-id-input" id="leadIdStart" placeholder="e.g. 8173" min="1">
+
+        </div>
+
+        <div class="control-group">
+
+          <span class="control-label">Language</span>
+
+          <div class="select-wrapper">
+
+            <select id="langSelect">
+
+              <option value="English">English</option>
+
+              <option value="Hindi">Hindi</option>
+
+              <option value="Tamil">Tamil</option>
+
+              <option value="Malayalam">Malayalam</option>
+
+            </select>
+
+          </div>
+
+        </div>
+
+        <div class="ai-key-control" style="display:none;">
+          <span class="api-key-status ok" id="apiKeyStatus">✓ AI Active</span>
+        </div>
+
+        <button class="btn btn-primary" id="btnProcess" disabled onclick="processFiles()">
+
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+
+          </svg>
+
+          Process Files
+
+        </button>
+
+        <button class="btn btn-success" id="btnCopy" disabled onclick="copyData()" style="display:none">
+
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round"
+
+              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+
+          </svg>
+
+          Copy Master Rows
+
+        </button>
+
+        <button class="btn btn-success" id="btnExport" disabled onclick="exportToExcel()" style="display:none">
+
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round"
+
+              d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5l5 5v11a2 2 0 01-2 2z" />
+
+          </svg>
+
+          Export Excel
+
+        </button>
+
+        <button class="btn btn-secondary" id="btnValidateAI" disabled onclick="validateDispositionsWithLLM()" style="display:none">
+
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+
+          </svg>
+
+          Validate with AI
+
+        </button>
+
+        <button class="btn btn-secondary" id="btnReset" onclick="resetAll()" style="display:none">Reset</button>
+
+        <div class="status-msg" id="globalStatus"></div>
+
+      </div>
+
+    </section>
+
+
+
+
+
+      <!-- AI Validation Status Bar (shown during AI validation) -->
+
+      <div id="aiValidationStatus" class="ai-status-bar" style="display:none;">
+
+        <div class="ai-status-row">
+
+          <div class="ai-status-info">
+
+            <span class="ai-status-msg" id="aiStatusMsg">AI validating dispositions…</span>
+
+            <span class="ai-status-badge" id="aiStatusBatch"></span>
+
+            <span class="ai-status-badge corrected" id="aiStatusCorrected" style="display:none;"></span>
+
+            <span class="ai-status-time" id="aiStatusElapsed"></span>
+
+          </div>
+
+          <div class="ai-status-actions" id="aiStatusActions">
+
+            <button class="ai-status-btn cancel" id="aiStatusCancel" onclick="cancelAiValidation()">Cancel</button>
+
+          </div>
+
+        </div>
+
+        <div class="ai-status-track">
+
+          <div class="ai-status-fill" id="aiStatusFill" style="width:0%;"></div>
+
+        </div>
+
+      </div>
+
+    <section class="results-panel">
+
+      <div class="section-head">
+
+        <div>
+
+          <div class="eyebrow">Step 2</div>
+
+          <div class="section-title">Review output</div>
+
+        </div>
+
+        <div class="section-note">Master rows include every post-sales field currently provided for Bullmen, Pressana,
+
+          Ambal, Suryabala Honda, and Perfect Riders.</div>
+
+      </div>
+
+
+
+      <div class="stats-bar" id="statsBar">
+
+        <div class="stat-card">
+
+          <div class="stat-label">Leads</div>
+
+          <div class="stat-val blue" id="statLeads">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Matched</div>
+
+          <div class="stat-val green" id="statMatched">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Service Booked</div>
+
+          <div class="stat-val green" id="statBooked">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Service Completed</div>
+
+          <div class="stat-val green" id="statCompleted">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Not Interested</div>
+
+          <div class="stat-val amber" id="statNotInterested">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Not Connected</div>
+
+          <div class="stat-val red" id="statNotConnected">0</div>
+
+        </div>
+
+        <div class="stat-card">
+
+          <div class="stat-label">Unknown</div>
+
+          <div class="stat-val amber" id="statUnknown">0</div>
+
+        </div>
+
+      </div>
+
+
+
+      <div class="quality-card" id="qualityCard">
+
+        <div class="quality-header">
+
+          <div>
+
+            <div class="eyebrow">Data quality</div>
+
+            <div class="quality-title" id="qualityTitle">Batch checks</div>
+
+            <div class="quality-meta" id="qualityMeta"></div>
+
+          </div>
+
+          <button class="btn btn-secondary" onclick="copyQualityReport()" id="btnCopyQuality">Copy Report</button>
+
+        </div>
+
+        <div class="quality-body">
+
+          <div>
+
+            <div class="quality-list-title">Warnings</div>
+
+            <div id="qualityWarnings"></div>
+
+          </div>
+
+          <div>
+
+            <div class="quality-list-title">Samples</div>
+
+            <div id="qualitySamples"></div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <div class="table-wrapper" id="tableWrapper">
+
+        <div class="table-header">
+
+          <div>
+
+            <div class="table-title">Zoho Master Sheet Preview</div>
+
+            <div class="table-caption" id="tableCaption">0 rows</div>
+
+          </div>
+
+        </div>
+
+        <div class="table-scroll">
+
+          <table>
+
+            <thead>
+
+              <tr id="outputHead"></tr>
+
+            </thead>
+
+            <tbody id="outputBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+
+      <div class="table-wrapper" id="bookedTableWrapper">
+
+        <div class="table-header">
+
+          <div>
+
+            <div class="table-title">SERVICE BOOKED</div>
+
+            <div class="table-caption" id="bookedCaption">0 rows</div>
+
+          </div>
+
+          <button class="btn btn-success" id="btnCopyBooked" onclick="copyPreviewRows('booked')">Copy</button>
+
+        </div>
+
+        <div class="table-scroll">
+
+          <table>
+
+            <thead>
+
+              <tr>
+
+                <th>PHONE_NUMBER</th>
+
+                <th>VEHICLE_MODEL</th>
+
+                <th>DISPOSITION_DETAILS</th>
+
+                <th>LOCATION</th>
+
+                <th>CALL_DATE (MM/DD/YYYY)</th>
+
+                <th>Perfect Riders CRE Remarks</th>
+
+                <th>COMMON REMARKS</th>
+
+              </tr>
+
+            </thead>
+
+            <tbody id="bookedBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+
+      <div class="table-wrapper" id="completedTableWrapper">
+
+        <div class="table-header">
+
+          <div>
+
+            <div class="table-title">Service Completed</div>
+
+            <div class="table-caption" id="completedCaption">0 rows</div>
+
+          </div>
+
+          <button class="btn btn-success" id="btnCopyCompleted" onclick="copyPreviewRows('completed')">Copy</button>
+
+        </div>
+
+        <div class="table-scroll">
+
+          <table>
+
+            <thead>
+
+              <tr>
+
+                <th>PHONE_NUMBER</th>
+
+                <th>VEHICLE_MODEL</th>
+
+                <th>DISPOSITION_DETAILS</th>
+
+                <th>LOCATION</th>
+
+                <th>CALL_DATE (MM/DD/YYYY)</th>
+
+                <th>Perfect Riders CRE Remarks</th>
+
+              </tr>
+
+            </thead>
+
+            <tbody id="completedBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+
+      <div class="table-wrapper" id="notInterestedTableWrapper">
+
+        <div class="table-header">
+
+          <div>
+
+            <div class="table-title">Not Interested</div>
+
+            <div class="table-caption" id="notInterestedCaption">0 rows</div>
+
+          </div>
+
+          <button class="btn btn-success" id="btnCopyNotInterested" onclick="copyPreviewRows('notInterested')">Copy</button>
+
+        </div>
+
+        <div class="table-scroll">
+
+          <table>
+
+            <thead>
+
+              <tr>
+
+                <th>PHONE_NUMBER</th>
+
+                <th>VEHICLE_MODEL</th>
+
+                <th>SUMMARY</th>
+
+                <th>CALL_DATE (MM/DD/YYYY)</th>
+
+                <th>Perfect Riders CRE Remarks</th>
+
+              </tr>
+
+            </thead>
+
+            <tbody id="notInterestedBody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+
+  <footer>AutoNage - Post-Sales Disposition Sync - AutoEngage to Zoho Master Sheet</footer>
+
+
+
+  <script>
+
+    let rawFile1 = null;
+
+    let rawFile2 = null;
+
+    let processedData = [];
+
+    let qualityReport = null;
+
+    let bookedRows = [];
+
+    let completedRows = [];
+
+    let notInterestedRows = [];
+
+
+
+    const DEALERSHIPS = {
+
+      ambal_service: {
+
+        name: 'Ambal',
+
+        workflow: 'Post-Sales Service Reminder',
+
+        mode: 'post-sales',
+
+        leadColumns: ['reg_number', 'vin_number', 'campaign_id', 'person_name', 'phone_number', 'vehicle_model', 'customer_score', 'workshop_code', 'next_service_due', 'odometer_reading'],
+
+        sessionColumns: ['status', 'duration', 'start_time', 'summary', 'call_recording', 'sentiment_score', 'disposition_detail']
+
+      },
+
+      bullmen_service: {
+
+        name: 'Bullmen',
+
+        workflow: 'Post-Sales Service Reminder',
+
+        mode: 'post-sales',
+
+        leadColumns: ['reg_number', 'campaign_id', 'person_name', 'phone_number', 'vehicle_model', 'workshop_code', 'next_service_due', 'vin_number'],
+
+        sessionColumns: ['status', 'summary', 'duration', 'start_time', 'call_recording', 'sentiment_score', 'disposition_detail']
+
+      },
+
+      fortune_service: {
+
+        name: 'Fortune Toyota',
+
+        workflow: 'Post-Sales Service Reminder',
+
+        mode: 'post-sales',
+
+        leadColumns: ['campaign_id', 'person_name', 'phone_number', 'vehicle_model', 'reg_number', 'vin_number', 'next_service_due'],
+
+        sessionColumns: ['status', 'duration', 'start_time', 'summary', 'call_recording', 'sentiment_score', 'disposition_detail', 'service_type']
+
+      },
+
+      icare_feedback: {
+
+        name: 'Icare',
+
+        workflow: 'Post-Sales Feedback Reminder',
+
+        mode: 'post-sales',
+
+        leadColumns: ['campaign_id', 'person_name', 'phone_number', 'vehicle_model', 'reg_number', 'vin_number', 'showroom_code'],
+
+        sessionColumns: ['status', 'duration', 'start_time', 'summary', 'call_recording', 'sentiment_score', 'disposition_detail']
+
+      },
+
+      pressana_post_service_feedback: {
+
+        name: 'Pressana Kia',
+
+        workflow: 'Post Service Feedback',
+
+        mode: 'post-sales',
+
+        leadColumns: ['campaign_id', 'phone_number', 'last_service_date'],
+
+        sessionColumns: ['duration', 'status', 'start_time', 'sentiment_score', 'summary', 'call_recording', 'disposition_detail']
+
+      },
+
+      perfect_riders_service: {
+
+        name: 'Perfect Riders',
+
+        workflow: 'Post-Sales Service Reminder',
+
+        mode: 'post-sales',
+
+        leadColumns: ['campaign_id', 'phone_number', 'existing_vehicle_model'],
+
+        sessionColumns: ['duration', 'status', 'start_time', 'sentiment_score', 'summary', 'call_recording', 'disposition_detail']
+
+      },
+
+      pressana_service_feedback: {
+
+        name: 'Pressana',
+
+        workflow: 'Post-Sales Service Reminder and Service Feedback',
+
+        mode: 'post-sales',
+
+        leadColumns: ['campaign_id', 'phone_number', 'existing_vehicle_model'],
+
+        sessionColumns: ['duration', 'status', 'start_time', 'sentiment_score', 'summary', 'call_recording', 'disposition_detail']
+
+      },
+
+      suryabala_service: {
+
+        name: 'Suryabala Honda',
+
+        workflow: 'Post-Sales Service Reminder',
+
+        mode: 'post-sales',
+
+        leadColumns: ['reg_number', 'campaign_id', 'person_name', 'phone_number', 'vehicle_model', 'next_service_due', 'last_service_type', 'vin_number'],
+
+        sessionColumns: ['status', 'summary', 'duration', 'start_time', 'call_recording', 'sentiment_score', 'disposition_detail']
+
+      },
+
+
+
+    };
+
+
+
+    const OUTPUT_SCHEMAS = {
+
+      // Columns derived from disposition.md requirements. Each schema defines the final
+
+      // output table/clipboard/export column order per dealer.
+
+      pressana_service_feedback: [
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'VEHICLE_MODEL', key: 'vehicle_model' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'UPDATED_DISPOSITION', key: 'updated_disposition' },
+
+
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT_SCORE', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'SESSION_ID', key: 'last_session_id' },
+
+        { header: 'INTERESTED', key: 'interested' },
+
+        { header: 'NUMBER OF ATTEMPTS', key: 'number_of_attempts' },
+
+        { header: 'AUTONGAGE', key: 'autongage_disposition' },
+
+      ],
+
+      pressana_post_service_feedback: [
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'LAST_SERVICE_DATE', key: 'last_service_date' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'UPDATED_DISPOSITION', key: 'updated_disposition' },
+
+
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'RECORDING_DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'LAST_SESSION_ID', key: 'last_session_id' },
+
+        { header: 'INTERESTED', key: 'interested' },
+
+        { header: 'NUMBER_OF_ATTEMPTS', key: 'number_of_attempts' },
+
+        { header: 'AUTONGAGE_DISPOSITION', key: 'autongage_disposition' },
+
+      ],
+
+      ambal_service: [
+
+        { header: 'PERSON_NAME', key: 'person_name' },
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'REG_NUMBER', key: 'reg_number' },
+
+        { header: 'VEHICLE_MODEL', key: 'vehicle_model' },
+
+        { header: 'VIN', key: 'vin_number' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'UPDATED_DISPOSITION', key: 'updated_disposition' },
+
+
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'SESSION_ID', key: 'last_session_id' },
+
+        { header: 'CUSTOMER_SCORE', key: 'customer_score' },
+
+        { header: 'NEXT_SERVICE_DUE', key: 'next_service_due' },
+
+        { header: 'ODOMETER_READING', key: 'odometer_reading' },
+
+        { header: 'PURPOSE_OF_VISIT', key: 'purpose_of_visit' },
+
+
+
+      ],
+
+      perfect_riders_service: [
+
+        { header: 'WORKSHOP_CODE', key: 'workshop_code' },
+
+        { header: 'PERSON_NAME', key: 'person_name' },
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'VEHICLE_MODEL', key: 'vehicle_model' },
+
+        { header: 'REG_NUMBER', key: 'reg_number' },
+
+        { header: 'VIN_NUMBER', key: 'vin_number' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'Updated Disposition', key: 'updated_disposition' },
+
+
+
+        { header: 'LAST_SERVICE_DATE', key: 'last_service_date' },
+
+        { header: 'NEXT_SERVICE_DATE', key: 'next_service_due' },
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT_SCORE', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'SESSION_ID', key: 'last_session_id' },
+
+        { header: 'INTERESTED', key: 'interested' },
+
+        { header: 'NUMBER OF ATTEMPTS', key: 'number_of_attempts' },
+
+      ],
+
+      fortune_service: [
+
+        { header: 'PERSON_NAME', key: 'person_name' },
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'VEHICLE_MODEL', key: 'vehicle_model' },
+
+        { header: 'REG_NUMBER', key: 'reg_number' },
+
+        { header: 'VIN_NUMBER', key: 'vin_number' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition_detail' },
+
+
+
+        { header: 'MANUAL_DISPOSITION', key: 'manual_disposition' },
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'SESSION_ID', key: 'last_session_id' },
+
+        { header: 'INTERESTED', key: 'interested' },
+
+        { header: 'SERVICE_TYPE', key: 'service_type' },
+
+        { header: 'NEXT_SERVICE_DATE', key: 'next_service_due' },
+
+        { header: 'NUMBER OF ATTEMPTS', key: 'number_of_attempts' },
+
+      ],
+
+      icare_feedback: [
+
+        { header: 'PERSON_NAME', key: 'person_name' },
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'ID', key: 'lead_tags' },
+
+        { header: 'SHOWROOM_CODE', key: 'showroom_code' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'UPDATED_DISPOSITION', key: 'updated_disposition' },
+
+
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'RECORDING_DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'LAST_SESSION_ID', key: 'last_session_id' },
+
+        { header: 'SATISFIED', key: 'satisfied' },
+
+        { header: 'NUMBER_OF_ATTEMPTS', key: 'number_of_attempts' },
+
+        { header: 'AUTONGAGE_DISPOSITION', key: 'autongage_disposition' },
+
+      ],
+
+      bullmen_service: [
+
+        { header: 'PERSON_NAME', key: 'person_name' },
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'VEHICLE_MODEL', key: 'vehicle_model' },
+
+        { header: 'REG_NUMBER', key: 'reg_number' },
+
+        { header: 'VIN', key: 'vin_number' },
+
+        { header: 'DEALER_CODE', key: 'dealer_code' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'UPDATED_DISPOSITION', key: 'updated_disposition' },
+
+
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'LAST_SESSION_ID', key: 'last_session_id' },
+
+        { header: 'NEXT_SERVICE_DATE', key: 'next_service_due' },
+
+        { header: 'INTERESTED', key: 'interested' },
+
+        { header: 'NUMBER_OF_ATTEMPTS', key: 'number_of_attempts' },
+
+        { header: 'AUTONGAGE_DISPOSITION', key: 'autongage_disposition' },
+
+      ],
+
+      suryabala_service: [
+
+        { header: 'PERSON_NAME', key: 'person_name' },
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'VEHICLE_MODEL', key: 'vehicle_model' },
+
+        { header: 'REG_NUMBER', key: 'reg_number' },
+
+        { header: 'VIN_NUMBER', key: 'vin_number' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'UPDATED_DISPOSITION', key: 'updated_disposition' },
+
+
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'SENTIMENT', key: 'sentiment_score' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'DURATION', key: 'duration' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+        { header: 'SESSION_ID', key: 'last_session_id' },
+
+        { header: 'INTERESTED', key: 'interested' },
+
+        { header: 'SERVICE_TYPE', key: 'last_service_type' },
+
+        { header: 'NEXT_SERVICE_DATE', key: 'next_service_due' },
+
+        { header: 'NUMBER_OF_ATTEMPTS', key: 'number_of_attempts' },
+
+      ],
+
+    };
+
+
+
+    function getOutputColumnsForDealer(dealerKey) {
+
+      return OUTPUT_SCHEMAS[dealerKey] || [
+
+        { header: 'PHONE_NUMBER', key: 'phone_number' },
+
+        { header: 'SUMMARY', key: 'summary' },
+
+        { header: 'STATUS', key: 'session_status' },
+
+        { header: 'DISPOSITION_DETAILS', key: 'disposition' },
+
+        { header: 'UPDATED_DISPOSITION', key: 'updated_disposition' },
+
+        { header: 'CALL_DATE', key: 'call_date' },
+
+        { header: 'RECORDINGS', key: 'call_recording' },
+
+        { header: 'CAMPAIGN_ID', key: 'campaign_id' },
+
+      ];
+
+    }
+
+
+
+    const DISPOSITION_RULES = [
+
+      { terms: ['service booked', 'service appointment booked', 'appointment booked', 'booking confirmed', 'slot booked'], outcome: 'Connected', priority: 10, terminal: true },
+
+      { terms: ['vehicle serviced', 'service completed', 'serviced'], outcome: 'Connected', priority: 10, terminal: true },
+
+      { terms: ['feedback given', 'feedback received', 'feedback completed', 'feedback captured', 'happy customer'], outcome: 'Connected', priority: 10, terminal: true },
+
+      { terms: ['complaint', 'escalation', 'negative feedback', 'unhappy', 'dissatisfied'], outcome: 'Connected', priority: 9, terminal: true },
+
+      { terms: ['not interested', 'refused service', 'service not required', 'already serviced'], outcome: 'Connected', priority: 9, terminal: true },
+
+      { terms: ['wrong number', 'invalid number'], outcome: 'Not Connected', priority: 9, terminal: true },
+
+      { terms: ['dnd', 'do not disturb'], outcome: 'Not Connected', priority: 9, terminal: true },
+
+      { terms: ['callback requested', 'call back', 'asked to call later'], outcome: 'Connected', priority: 7, terminal: false },
+
+      { terms: ['connected', 'contacted', 'spoken', 'customer answered', 'answered'], outcome: 'Connected', priority: 6, terminal: false },
+
+      { terms: ['not reachable', 'not connected', 'no answer', 'ringing', 'switched off', 'busy', 'user did not speak', 'voicemail'], outcome: 'Not Connected', priority: 3, terminal: false }
+
+    ];
+
+
+
+    const PREVIEW_LIMIT = 200;
+
+    const ROLE_CONFIDENCE_MARGIN = 2;
+
+
+
+    // ── SORT STATE (mirrors pre-sales sheet behaviour) ────────────────────────────
+
+    // Sortable keys in this tool: person_name | phone_number | disposition_detail
+
+    let currentSortKey = 'person_name';   // default sort by name
+
+    let currentSortDir = 'asc';           // 'asc' | 'desc' | null
+
+
+
+    function toggleSort(key) {
+
+      if (currentSortKey === key) {
+
+        if (currentSortDir === 'asc') currentSortDir = 'desc';
+
+        else if (currentSortDir === 'desc') { currentSortKey = null; currentSortDir = null; }
+
+      } else {
+
+        currentSortKey = key;
+
+        currentSortDir = 'asc';
+
+      }
+
+      updateSortIndicators();
+
+      renderTable();
+
+    }
+
+
+
+    function updateSortIndicators() {
+
+      document.querySelectorAll('.th-sortable').forEach(th => {
+
+        th.classList.remove('sort-asc', 'sort-desc');
+
+        if (th.dataset.sortKey === currentSortKey && currentSortDir) {
+
+          th.classList.add(currentSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+
+        }
+
+      });
+
+    }
+
+
+
+    function compareCaseSensitiveStrings(a, b) {
+
+      if (a === b) return 0;
+
+      return a < b ? -1 : 1;
+
+    }
+
+
+
+    function getSortedData(data) {
+
+      let sorted = data;
+
+      if (currentSortKey && currentSortDir) {
+
+        sorted = [...data];
+
+        const dir = currentSortDir === 'asc' ? 1 : -1;
+
+        sorted.sort((a, b) => {
+
+          const va = String(a[currentSortKey] || '');
+
+          const vb = String(b[currentSortKey] || '');
+
+          return dir * compareCaseSensitiveStrings(va, vb);
+
+        });
+
+      }
+
+      return sorted;
+
+    }
+
+
+
+    function esc(v) {
+
+      return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    }
+
+
+
+    function safeRecordingHref(value) {
+
+      const raw = String(value ?? '').trim();
+
+      if (!raw) return null;
+
+      const lower = raw.toLowerCase();
+
+      if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) return null;
+
+      if (lower.startsWith('http://') || lower.startsWith('https://')) return raw;
+
+      if (lower.startsWith('s3:')) return raw;
+
+      // If it looks like a domain/path, assume https; otherwise omit link.
+
+      if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw)) return `https://${raw}`;
+
+      return null;
+
+    }
+
+
+
+    function clean(v) {
+
+      return String(v ?? '').trim();
+
+    }
+
+
+
+    function canonicalHeader(h) {
+
+      return String(h ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+    }
+
+
+
+    function cellToString(val) {
+
+      if (val === undefined || val === null || val === '') return '';
+
+      if (typeof val === 'number') {
+
+        if (Number.isInteger(val)) return String(val);
+
+        if (val > 999999 && Math.abs(val - Math.round(val)) < 0.01) return String(Math.round(val));
+
+        return String(val);
+
+      }
+
+      let s = String(val).trim();
+
+      if (/^\d[\d.]*[eE][+\-]?\d+$/.test(s)) {
+
+        const n = parseFloat(s);
+
+        if (Number.isFinite(n) && n > 999999) return String(Math.round(n));
+
+      }
+
+      return s;
+
+    }
+
+
+
+    function readFileAsArrayBuffer(file) {
+
+      return new Promise((resolve, reject) => {
+
+        const reader = new FileReader();
+
+        reader.onload = e => resolve(e.target.result);
+
+        reader.onerror = () => reject(new Error('Failed to read file'));
+
+        reader.readAsArrayBuffer(file);
+
+      });
+
+    }
+
+
+
+    function parseSheet(ab) {
+
+      const wb = XLSX.read(ab, { type: 'array', raw: true, cellText: false, cellDates: false });
+
+      const ws = wb.Sheets[wb.SheetNames[0]];
+
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+
+      if (rows.length < 2) return [];
+
+      const headers = rows[0].map(canonicalHeader);
+
+      const result = [];
+
+      for (let i = 1; i < rows.length; i++) {
+
+        const raw = rows[i];
+
+        if (!raw.some(cell => clean(cell))) continue;
+
+        const obj = {};
+
+        headers.forEach((h, j) => { if (h) obj[h] = cellToString(raw[j]); });
+
+        obj.__raw = raw.map(cellToString);
+
+        result.push(obj);
+
+      }
+
+      return result;
+
+    }
+
+
+
+    function normalizePhone(raw) {
+
+      if (!raw) return null;
+
+      let s = String(raw).trim();
+
+      if (/^\d[\d.]*[eE][+\-]?\d+$/.test(s)) s = String(Math.round(parseFloat(s)));
+
+      const digits = s.replace(/\D/g, '');
+
+      if (!digits) return null;
+
+      if (digits.startsWith('91') && digits.length === 12) return digits.slice(2);
+
+      if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
+
+      if (digits.length === 10) return digits;
+
+      if (digits.startsWith('91') && digits.length > 12) return digits.slice(-10);
+
+      if (digits.length > 10) return digits.slice(-10);
+
+      return null;
+
+    }
+
+
+
+    function isPhoneLike(val) {
+
+      return /^\+?[\d\s\-()]{10,15}$/.test(String(val).trim());
+
+    }
+
+
+
+    function detectPhones(obj) {
+
+      const phones = new Set();
+
+      const exactNames = ['phone_number', 'phone', 'mobile', 'contact', 'contact_number', 'customer_phone', 'mobile_number'];
+
+      for (const c of exactNames) {
+
+        const n = normalizePhone(obj[c]);
+
+        if (n) phones.add(n);
+
+      }
+
+      const raw = Array.isArray(obj.__raw) ? obj.__raw : Object.values(obj);
+
+      for (const val of raw) {
+
+        const s = clean(val);
+
+        if (!s) continue;
+
+        if (isPhoneLike(s)) {
+
+          const n = normalizePhone(s);
+
+          if (n) phones.add(n);
+
+        }
+
+        const matches = s.match(/\+?(?:91|0)?[\s-]?\d{10,12}\b/g);
+
+        if (matches) {
+
+          for (const m of matches) {
+
+            const n = normalizePhone(m);
+
+            if (n) phones.add(n);
+
+          }
+
+        }
+
+      }
+
+      return Array.from(phones);
+
+    }
+
+
+
+    function get(row, candidates) {
+
+      for (const c of candidates) {
+
+        if (row && row[c] !== undefined && clean(row[c]) !== '') return clean(row[c]);
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function detectDate(row) {
+
+      return get(row, [
+
+        'start_time',
+
+        'start_date',
+
+        'call_start_time',
+
+        'call_time',
+
+        'created',
+
+        'created_at',
+
+        'date',
+
+        'timestamp',
+
+        'call_date',
+
+        'updated',
+
+        'updated_at'
+
+      ]);
+
+    }
+
+
+
+    function detectRecording(row) {
+
+      const direct = get(row, ['call_recording', 'recording', 'recording_url', 'call_url', 'audio_url', 'media_url']);
+
+      if (direct) return direct;
+
+      for (const [k, v] of Object.entries(row || {})) {
+
+        if (k === '__raw' || !/record|audio|media/i.test(k)) continue;
+
+        if (clean(v)) return clean(v);
+
+      }
+
+      return '';
+
+    }
+
+
+
+    function parseAutoEngageDate(str) {
+
+      if (!str) return null;
+
+      const s = String(str).trim();
+
+      const dmyTime = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2})?:?(\d{2})?:?(\d{2})?\s*(am|pm)?/i);
+
+      if (dmyTime) {
+
+        let [, dd, mm, yyyy, hh, min, sec, ampm] = dmyTime;
+
+        dd = parseInt(dd, 10);
+
+        mm = parseInt(mm, 10);
+
+        yyyy = parseInt(yyyy, 10);
+
+        hh = parseInt(hh || '0', 10);
+
+        min = parseInt(min || '0', 10);
+
+        sec = parseInt(sec || '0', 10);
+
+        if (ampm) {
+
+          ampm = ampm.toLowerCase();
+
+          if (ampm === 'pm' && hh !== 12) hh += 12;
+
+          if (ampm === 'am' && hh === 12) hh = 0;
+
+        }
+
+        return new Date(yyyy, mm - 1, dd, hh, min, sec);
+
+      }
+
+      const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+
+      if (iso) {
+
+        return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10),
+
+          parseInt(iso[4] || '0', 10), parseInt(iso[5] || '0', 10), parseInt(iso[6] || '0', 10));
+
+      }
+
+      const parsed = new Date(s);
+
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+
+    }
+
+
+
+    function formatDate(str) {
+
+      const d = parseAutoEngageDate(str);
+
+      if (!d) return clean(str);
+
+      return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+
+    }
+
+
+
+    function convertEpochToIST(val) {
+
+      if (!val) return '';
+
+      var num = typeof val === 'number' ? val : Number(String(val).trim());
+
+      if (!Number.isFinite(num) || num < 1000000000) return String(val).trim();
+
+      var ts = num < 10000000000000 ? num * 1000 : num;
+
+      var d = new Date(ts + (5.5 * 60 * 60 * 1000));
+
+      if (isNaN(d.getTime())) return String(val).trim();
+
+      var dd = String(d.getUTCDate()).padStart(2, '0');
+
+      var mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+
+      var yyyy = d.getUTCFullYear();
+
+      return dd + '/' + mm + '/' + yyyy;
+
+    }
+
+
+
+    function normalizedText(value) {
+
+      return clean(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+
+    }
+
+
+
+    function classifyDisposition(disposition, status, summary) {
+
+      const text = normalizedText([disposition, status, summary].filter(Boolean).join(' '));
+
+      if (!text) return { outcome: 'Unknown', priority: 1, terminal: false };
+
+      for (const rule of DISPOSITION_RULES) {
+
+        if (rule.terms.some(term => text.includes(term))) {
+
+          return { outcome: rule.outcome, priority: rule.priority, terminal: rule.terminal };
+
+        }
+
+      }
+
+      if (text.includes('completed') || text.includes('success')) {
+
+        return { outcome: 'Connected', priority: 5, terminal: false };
+
+      }
+
+      if (text.includes('failed') || text.includes('missed')) {
+
+        return { outcome: 'Not Connected', priority: 3, terminal: false };
+
+      }
+
+      return { outcome: 'Unknown', priority: 1, terminal: false };
+
+    }
+
+
+
+    function isServiceBooked(row) {
+
+      var ud = clean(row.updated_disposition);
+
+      if (ud === 'Converted') return true;
+
+      const text = normalizedText(row.disposition_detail || '');
+
+      return ['service booked', 'service appointment booked', 'appointment booked', 'slot booked', 'booking confirmed'].some(term => text.includes(term));
+
+    }
+
+
+
+    function isFeedbackOrEscalation(row) {
+
+      const text = normalizedText([row.disposition_detail, row.summary, row.session_status].join(' '));
+
+      return ['feedback', 'complaint', 'escalation', 'unhappy', 'dissatisfied', 'negative'].some(term => text.includes(term));
+
+    }
+
+
+
+    function isServiceCompleted(row) {
+
+      var ud = clean(row.updated_disposition);
+
+      if (ud === 'Has serviced car in another dealership' || ud === 'Existing Dealer Contact') return true;
+
+      const text = normalizedText(row.disposition_detail || '');
+
+      return ['vehicle serviced', 'service completed', 'has serviced car in another dealership'].some(term => text.includes(term));
+
+    }
+
+
+
+    function isNotInterested(row) {
+
+      var ud = clean(row.updated_disposition);
+
+      if (ud === 'Not Interested' || ud === 'Invalid Lead' || ud === 'Rejected') return true;
+
+      const text = normalizedText(row.disposition_detail || '');
+
+      return ['not interested', 'refused service', 'service not required', 'already serviced'].some(term => text.includes(term));
+
+    }
+
+
+
+    function extractPerfectRidersLocation(summary) {
+
+      const text = normalizedText(summary);
+
+      if (!text) return '';
+
+      if (text.includes('jayanagar')) return 'JAYANAGAR';
+
+      if (text.includes('lalbagh')) return 'LALBAGH';
+
+      return '';
+
+    }
+
+
+
+    function extractPerfectRidersCRE(summary) {
+
+      const text = normalizedText(summary);
+
+      if (!text) return '';
+
+      // Extract remarks after 'remarks:' or 'cre:' markers if present
+
+      const remarkMatch = text.match(/remarks?\s*[:\-]\s*(.+)/i);
+
+      if (remarkMatch) return remarkMatch[1].trim();
+
+      const creMatch = text.match(/cre\s*[:\-]\s*(.+)/i);
+
+      if (creMatch) return creMatch[1].trim();
+
+      // Fallback: return first 120 chars as a remark summary
+
+      const truncated = summary.trim().substring(0, 120);
+
+      return truncated.length < summary.trim().length ? truncated + '…' : truncated;
+
+    }
+
+
+
+
+
+
+
+    // ─── HISTORY DETECTION & FORMATTING ─────────────────────────────────────
+
+    function sessionScore(row) {
+
+      let score = 0;
+
+      const date = parseAutoEngageDate(detectDate(row));
+
+      if (date) score += date.getTime() / 100000000;
+
+      if (get(row, ['disposition_detail', 'disposition', 'disposition_details'])) score += 10000;
+
+      if (detectRecording(row)) score += 1000;
+
+      if (get(row, ['summary', 'call_summary', 'conversation_summary', 'notes'])) score += 500;
+
+      if (get(row, ['status', 'call_status'])) score += 200;
+
+      return score;
+
+    }
+
+
+
+    function getSelectedDealer() {
+
+      return DEALERSHIPS[document.getElementById('dealerSelect').value];
+
+    }
+
+
+
+    function buildSessionMap(rows) {
+
+      const groups = {};
+
+      for (const row of rows) {
+
+        for (const phone of detectPhones(row)) {
+
+          if (!groups[phone]) groups[phone] = [];
+
+          groups[phone].push(row);
+
+        }
+
+      }
+
+
+
+      const map = {};
+
+      for (const [phone, sessions] of Object.entries(groups)) {
+
+        const best = sessions.slice().sort((a, b) => sessionScore(b) - sessionScore(a))[0];
+
+        var histRaw = detectHistory(best);
+
+        map[phone] = {
+
+          row: best,
+
+          count: sessions.length,
+
+          status: get(best, ['status', 'session_status', 'call_status', 'conversation_status']),
+
+          disposition: get(best, ['updated_disposition', 'disposition_detail', 'disposition', 'disposition_details', 'call_disposition']),
+
+          duration: get(best, ['duration', 'call_duration', 'talk_time', 'total_duration']),
+
+          startTime: detectDate(best),
+
+          summary: get(best, ['summary', 'call_summary', 'conversation_summary', 'notes', 'remarks']),
+
+          recording: detectRecording(best),
+
+          sentiment: get(best, ['sentiment_score', 'sentiment', 'sentiment_label', 'score']),
+
+          // duration must come from Sessions (File 2). Some exports only have a generic "duration".
+
+          recordingDuration: get(best, ['duration', 'call_duration', 'recording_length', 'recording_time', 'audio_duration', 'duration', 'call_duration']),
+
+          lastSessionId: get(best, ['last_session_id', 'session_id', 'sessionid', 'id', 'call_id']),
+
+          serviceType: get(best, ['service_type', 'service_type_session']),
+
+          history_raw: histRaw,
+
+          history_text: formatHistoryForPrompt(histRaw),
+
+        };
+
+      }
+
+      return { map, groups };
+
+    }
+
+
+
+    function addQualityIssue(issues, level, text, blocking = false) {
+
+      issues.push({ level, text, blocking: blocking || level === 'danger' });
+
+    }
+
+
+
+    function sampleSourceRow(row, label) {
+
+      const raw = Array.isArray(row.__raw) ? row.__raw.map(clean).filter(Boolean).slice(0, 4).join(' | ') : '';
+
+      return raw ? `${label}: ${raw}` : label;
+
+    }
+
+
+
+    function getOutputFieldChecks(dealerKey) {
+
+      const keys = new Set(getOutputColumnsForDealer(dealerKey).map(col => col.key).filter(Boolean));
+
+      const checks = [];
+
+      if (keys.has('phone_number')) checks.push({ key: 'phone_number', label: 'Phone number', level: 'danger' });
+
+      if (keys.has('campaign_id')) checks.push({ key: 'campaign_id', label: 'Campaign ID', level: 'warn' });
+
+      if (keys.has('session_status')) checks.push({ key: 'session_status', label: 'Status', level: 'warn' });
+
+      if (keys.has('call_date')) checks.push({ key: 'call_date', label: 'Call date', level: 'warn' });
+
+      if (keys.has('disposition')) checks.push({ key: 'disposition', label: 'Disposition details', level: 'warn' });
+
+      else if (keys.has('disposition_detail')) checks.push({ key: 'disposition_detail', label: 'Disposition details', level: 'warn' });
+
+      if (keys.has('person_name')) checks.push({ key: 'person_name', label: 'Person name', level: 'warn' });
+
+      if (keys.has('reg_number')) checks.push({ key: 'reg_number', label: 'Registration number', level: 'warn' });
+
+      if (keys.has('vin_number')) checks.push({ key: 'vin_number', label: 'VIN number', level: 'warn' });
+
+      if (keys.has('workshop_code')) checks.push({ key: 'workshop_code', label: 'Workshop code', level: 'warn' });
+
+      if (keys.has('last_service_date')) checks.push({ key: 'last_service_date', label: 'Last service date', level: 'warn' });
+
+      if (keys.has('next_service_due')) checks.push({ key: 'next_service_due', label: 'Next service date', level: 'warn' });
+
+      return checks;
+
+    }
+
+
+
+    function evaluateFileRoles(role1, role2) {
+
+      const defaultScore = role1.lead + role2.session; // File 1 = Leads, File 2 = Sessions
+
+      const swappedScore = role2.lead + role1.session; // File 2 = Leads, File 1 = Sessions
+
+      const filesSwapped = swappedScore > defaultScore;
+
+      const bestScore = Math.max(defaultScore, swappedScore);
+
+      const margin = Math.abs(defaultScore - swappedScore);
+
+      const confidence = bestScore === 0 ? 'unknown' : margin >= ROLE_CONFIDENCE_MARGIN ? 'high' : 'low';
+
+      return {
+
+        filesSwapped,
+
+        confidence,
+
+        margin,
+
+        defaultScore,
+
+        swappedScore,
+
+        file1: role1,
+
+        file2: role2
+
+      };
+
+    }
+
+
+
+    function buildQualityReport({ leadRows, sessionRows, leads, sessionGroups, output, dealer, dealerKey, roleInfo }) {
+
+      const warnings = [];
+
+      const samples = [];
+
+      const leadPhones = new Map();
+
+      const invalidLeads = [];
+
+
+
+      leadRows.forEach((row, index) => {
+
+        const phone = normalizePhone(get(row, ['phone_number', 'phone', 'mobile', 'contact_number', 'mobile_number']));
+
+        if (!phone) invalidLeads.push(sampleSourceRow(row, `Lead row ${index + 2}`));
+
+        else leadPhones.set(phone, (leadPhones.get(phone) || 0) + 1);
+
+      });
+
+
+
+      const leadPhoneSet = new Set(leads.map(item => item.phone));
+
+      const duplicatePhones = Array.from(leadPhones.entries()).filter(([, count]) => count > 1);
+
+      const sessionPhones = Object.keys(sessionGroups);
+
+      const matched = output.filter(r => r._matched).length;
+
+      const unmatched = output.filter(r => !r._matched);
+
+      const unknownRows = output.filter(r => r.outcome === 'Unknown');
+
+      const missingLeadColumns = missingColumns(leadRows, dealer.leadColumns);
+
+      const missingSessionColumns = missingColumns(sessionRows, dealer.sessionColumns);
+
+      const sessionsWithoutPhone = sessionRows.filter(row => !detectPhones(row).length).length;
+
+      const sessionOnlyPhones = sessionPhones.filter(phone => !leadPhoneSet.has(phone));
+
+      const outputColumns = getOutputColumnsForDealer(dealerKey);
+
+      const outputKeys = new Set(outputColumns.map(col => col.key).filter(Boolean));
+
+      const missingOutputFields = getOutputFieldChecks(dealerKey)
+
+        .map(check => ({
+
+          ...check,
+
+          count: output.filter(row => !clean(row[check.key])).length
+
+        }))
+
+        .filter(check => check.count > 0);
+
+      const missingRecordings = outputKeys.has('call_recording')
+
+        ? output.filter(row => row._matched && !clean(row.call_recording)).length
+
+        : 0;
+
+
+
+      if (roleInfo.filesSwapped) {
+
+        addQualityIssue(
+
+          warnings,
+
+          roleInfo.confidence === 'high' ? 'info' : 'warn',
+
+          `Upload order auto-detected as swapped: File 2 is treated as Leads and File 1 as Sessions. Role scores default=${roleInfo.defaultScore}, swapped=${roleInfo.swappedScore}.`
+
+        );
+
+      }
+
+      if (roleInfo.confidence !== 'high') {
+
+        addQualityIssue(
+
+          warnings,
+
+          'warn',
+
+          `Upload role confidence is ${roleInfo.confidence}. Confirm File 1/File 2 are the intended lead and session exports before using the output.`
+
+        );
+
+      }
+
+      if (!leadRows.length) addQualityIssue(warnings, 'danger', 'Leads file has no data rows.');
+
+      if (!sessionRows.length) addQualityIssue(warnings, 'danger', 'Sessions file has no data rows.');
+
+      if (!output.length) addQualityIssue(warnings, 'danger', 'No master-sheet rows were produced.');
+
+      if (output.length && sessionRows.length && matched === 0) {
+
+        addQualityIssue(warnings, 'danger', 'No processed leads matched a Sessions row. Check the campaign batch or upload order before copy/export.');
+
+      }
+
+      if (invalidLeads.length) addQualityIssue(warnings, 'warn', `${invalidLeads.length} lead row(s) were skipped because phone number was invalid.`);
+
+      if (duplicatePhones.length) addQualityIssue(warnings, 'warn', `${duplicatePhones.length} duplicate lead phone number(s) found.`);
+
+      if (unmatched.length) addQualityIssue(warnings, 'warn', `${unmatched.length} lead(s) did not match a Sessions row.`);
+
+      if (sessionOnlyPhones.length) addQualityIssue(warnings, 'info', `${sessionOnlyPhones.length} Sessions phone number(s) were not present in Leads.`);
+
+      if (sessionsWithoutPhone) addQualityIssue(warnings, 'warn', `${sessionsWithoutPhone} session row(s) had no detectable phone number.`);
+
+      if (unknownRows.length) addQualityIssue(warnings, 'warn', `${unknownRows.length} row(s) mapped to Unknown outcome. Review post-sales disposition rules.`);
+
+      for (const check of missingOutputFields) {
+
+        addQualityIssue(warnings, check.level, `${check.count} output row(s) are missing ${check.label}.`);
+
+      }
+
+      if (missingRecordings) addQualityIssue(warnings, 'info', `${missingRecordings} matched row(s) have no recording URL.`);
+
+      if (missingLeadColumns.length) addQualityIssue(warnings, 'info', `Lead columns not found for ${dealer.name}: ${missingLeadColumns.join(', ')}.`);
+
+      if (missingSessionColumns.length) addQualityIssue(warnings, 'info', `Session columns not found for ${dealer.name}: ${missingSessionColumns.join(', ')}.`);
+
+
+
+      const blocked = warnings.some(w => w.blocking);
+
+      const review = warnings.some(w => w.level === 'warn' || w.level === 'danger');
+
+      if (!warnings.length) addQualityIssue(warnings, 'ok', 'All validation checks passed. Ready to copy or export.');
+
+
+
+      if (invalidLeads.length) samples.push({ title: 'Invalid lead phones', rows: invalidLeads.slice(0, 5) });
+
+      if (duplicatePhones.length) samples.push({ title: 'Duplicate lead phones', rows: duplicatePhones.slice(0, 5).map(([phone, count]) => `${phone} appears ${count} times`) });
+
+      const unmatchedSamples = unmatched.slice(0, 5).map(r => `${r.phone_number}${r.person_name ? ' - ' + r.person_name : ''}`);
+
+      if (unmatchedSamples.length) samples.push({ title: 'Unmatched leads', rows: unmatchedSamples });
+
+      if (sessionOnlyPhones.length) samples.push({ title: 'Session-only phones', rows: sessionOnlyPhones.slice(0, 5) });
+
+      if (unknownRows.length) samples.push({ title: 'Unknown outcomes', rows: unknownRows.slice(0, 5).map(r => `${r.phone_number}: ${r.disposition_detail || r.session_status || '(blank)'}`) });
+
+      if (missingOutputFields.length) {
+
+        samples.push({
+
+          title: 'Missing output fields',
+
+          rows: missingOutputFields.slice(0, 5).map(check => `${check.label}: ${check.count} row(s)`)
+
+        });
+
+      }
+
+      if (!samples.length) samples.push({ title: 'No samples', rows: ['No invalid, duplicate, unmatched, or unknown rows to sample.'] });
+
+
+
+      return {
+
+        title: blocked ? 'Blocked - fix input files' : (review ? 'Review needed' : 'Ready to copy'),
+
+        state: blocked ? 'blocked' : (review ? 'review' : 'clean'),
+
+        canExport: output.length > 0 && !blocked,
+
+        warnings,
+
+        samples,
+
+        counts: {
+
+          leadRows: leadRows.length,
+
+          sessionRows: sessionRows.length,
+
+          leads: leads.length,
+
+          matched,
+
+          unmatched: unmatched.length,
+
+          invalidLeads: invalidLeads.length,
+
+          duplicatePhones: duplicatePhones.length,
+
+          sessionPhones: sessionPhones.length,
+
+          sessionOnlyPhones: sessionOnlyPhones.length,
+
+          sessionsWithoutPhone,
+
+          unknown: unknownRows.length
+
+        },
+
+        roleInfo,
+
+        summary: [
+
+          `${leads.length} valid lead(s)`,
+
+          `${matched}/${output.length} matched`,
+
+          `${sessionPhones.length} session phone(s)`,
+
+          `role confidence: ${roleInfo.confidence}`
+
+        ]
+
+      };
+
+    }
+
+
+
+    function missingColumns(rows, expected) {
+
+      if (!rows.length || !expected || expected.some(col => col.startsWith('Use '))) return [];
+
+      const cols = new Set(Object.keys(rows[0]).filter(k => k !== '__raw'));
+
+      return expected.filter(col => !cols.has(canonicalHeader(col)));
+
+    }
+
+
+
+    function scoreFileRole(rows) {
+
+      if (!rows.length) return { lead: 0, session: 0 };
+
+      const cols = new Set(Object.keys(rows[0]).filter(k => k !== '__raw'));
+
+      const leadHints = [
+
+        'phone_number', 'person_name', 'customer_name', 'name', 'campaign_id',
+
+        'vehicle_model', 'reg_number', 'vin_number', 'next_service_due',
+
+        'last_service_date', 'lead_tags', 'lead_id'
+
+      ];
+
+      const sessionHints = [
+
+        'status', 'session_status', 'call_status', 'summary', 'call_summary',
+
+        'disposition_detail', 'disposition', 'duration', 'start_time', 'start_date',
+
+        'created', 'call_date', 'sentiment_score', 'sentiment',
+
+        'call_recording', 'recording_url', 'session_id', 'last_session_id'
+
+      ];
+
+      let lead = 0;
+
+      let session = 0;
+
+      for (const key of leadHints) if (cols.has(key)) lead++;
+
+      for (const key of sessionHints) if (cols.has(key)) session++;
+
+      return { lead, session };
+
+    }
+
+
+
+    async function processFiles() {
+
+      const dealerKey = document.getElementById('dealerSelect').value;
+
+      const dealer = DEALERSHIPS[dealerKey];
+
+
+
+      if (!rawFile1 || !rawFile2) return;
+
+
+
+      showOverlay('Parsing files...');
+
+      await tick();
+
+
+
+      try {
+
+        const startId = parseInt(document.getElementById('leadIdStart')?.value, 10) || 0;
+
+        const selectedLanguage = document.getElementById('langSelect')?.value || '';
+
+        const [ab1, ab2] = await Promise.all([readFileAsArrayBuffer(rawFile1), readFileAsArrayBuffer(rawFile2)]);
+
+        const rows1 = parseSheet(ab1);
+
+        const rows2 = parseSheet(ab2);
+
+        const role1 = scoreFileRole(rows1);
+
+        const role2 = scoreFileRole(rows2);
+
+        const roleInfo = evaluateFileRoles(role1, role2);
+
+        const filesSwapped = roleInfo.filesSwapped;
+
+        const leadRows = filesSwapped ? rows2 : rows1;
+
+        const sessionRows = filesSwapped ? rows1 : rows2;
+
+
+
+        showOverlay('Reconciling leads and sessions...');
+
+        await tick();
+
+
+
+        const leads = [];
+
+        for (const row of leadRows) {
+
+          const phone = normalizePhone(get(row, ['phone_number', 'phone', 'mobile', 'contact_number', 'mobile_number']));
+
+          if (!phone) continue;
+
+          leads.push({ row, phone });
+
+        }
+
+
+
+        const { map: sessionMap, groups: sessionGroups } = buildSessionMap(sessionRows);
+
+        const output = [];
+
+
+
+        for (const { row, phone } of leads) {
+
+          const sess = sessionMap[phone] || {};
+
+          const classification = classifyDisposition(sess.disposition, sess.status, sess.summary);
+
+          const vehicleModel = get(row, ['vehicle_model', 'existing_vehicle_model', 'model', 'car_model']);
+
+          const leadId = startId > 0 ? `L-${startId + output.length}` : '';
+
+          const attempts = sess.count || (sessionGroups[phone]?.length || 0);
+
+          const interested = classification.outcome === 'Connected' ? 'YES' : '';
+
+          const satisfied = (classification.outcome === 'Connected' && isFeedbackOrEscalation({ disposition_detail: sess.disposition, summary: sess.summary, session_status: sess.status }))
+
+            ? 'YES'
+
+            : '';
+
+
+
+          output.push({
+
+            lead_id: leadId,
+
+            dealership: dealer.name,
+
+            workflow: dealer.workflow,
+
+            campaign_id: get(row, ['campaign_id', 'campaign']),
+
+            phone_number: phone,
+
+            person_name: get(row, ['person_name', 'person_name1', 'customer_name', 'name', 'full_name']),
+
+            showroom_code: get(row, ['showroom_code', 'show_room', 'dealer_code', 'store_code', 'location_code']),
+
+            reg_number: get(row, ['reg_number', 'registration_number', 'vehicle_registration_number']),
+
+            vin_number: get(row, ['vin_number', 'vin', 'chassis_number']),
+
+            vehicle_model: vehicleModel,
+
+            language: selectedLanguage,
+
+            workshop_code: get(row, ['workshop_code', 'workshop', 'location_code', 'dealer_code', 'dealer']),
+
+            dealer_code: get(row, ['workshop_code', 'workshop', 'location_code', 'dealer_code', 'dealer']),
+
+            lead_tags: get(row, ['lead_tags', 'lead_tag', 'tags', 'tag', 'id', 'lead_id', 'leadid', 'customer_id']),
+
+            next_service_due: get(row, ['next_service_due', 'service_due_date', 'next_due_date']),
+
+            last_service_date: dealerKey === 'perfect_riders_service'
+
+              ? convertEpochToIST(get(row, [
+
+                  'last_service_date',
+
+                  'last_service_dt',
+
+                  'last_service_done_date',
+
+                  'last_service_done',
+
+                  'last_service_on',
+
+                  'last_service',
+
+                  'service_date',
+
+                  'service_done_date',
+
+                  'service_completed_date'
+
+                ]))
+
+              : get(row, [
+
+                  'last_service_date',
+
+                  'last_service_dt',
+
+                  'last_service_done_date',
+
+                  'last_service_done',
+
+                  'last_service_on',
+
+                  'last_service',
+
+                  'service_date',
+
+                  'service_done_date',
+
+                  'service_completed_date'
+
+                ]),
+
+            customer_score: get(row, ['customer_score', 'score']),
+
+            odometer_reading: get(row, ['odometer_reading', 'odometer', 'kms']),
+
+            last_service_type: get(row, ['last_service_type', 'service_type']),
+
+            manual_disposition: get(row, [
+
+              'manual_disposition',
+
+              'manual disposition',
+
+              'manual_disposition_detail',
+
+              'manual_disposition_details',
+
+              'manual_disposition_status',
+
+              'manual_dispo',
+
+              'manual_status'
+
+            ]),
+
+            session_status: sess.status || '',
+
+            disposition: sess.disposition || '',
+
+            disposition_detail: sess.disposition || '',
+
+            outcome: classification.outcome,
+
+            call_date: formatDate(sess.startTime || ''),
+
+            duration: sess.duration || '',
+
+            summary: sess.summary || '',
+
+            session_history: sess.history_text || '',
+
+            sentiment_score: sess.sentiment || '',
+
+            call_recording: sess.recording || '',
+
+            recording_duration: sess.recordingDuration || '',
+
+            last_session_id: sess.lastSessionId || '',
+
+            number_of_attempts: dealerKey === 'perfect_riders_service' && startId > 0
+
+              ? `=COUNTIF(C:C;${phone})`
+
+              : (attempts ? String(attempts) : ''),
+
+            interested,
+
+            satisfied,
+
+            autongage_disposition: sess.disposition || '',
+
+            service_location: dealerKey === 'perfect_riders_service'
+
+              ? extractPerfectRidersLocation(sess.summary)
+
+              : '',
+
+            service_type: sess.serviceType || '',
+
+            lead_row_id: get(row, ['id', 'lead_id', 'leadid', 'customer_id']),
+
+            exclusion_flag: classification.terminal ? 'YES' : '',
+
+            _matched: Boolean(sess.row),
+
+            _priority: classification.priority
+
+          });
+
+        }
+
+
+
+        processedData = output;
+
+        qualityReport = buildQualityReport({ leadRows, sessionRows, leads, sessionGroups, output, dealer, dealerKey, roleInfo });
+
+        // Separate preview rows by disposition type
+
+        var allOutput = output;
+
+        // Classify rows with mutual exclusion: each row goes to at most one preview table
+
+        bookedRows = allOutput.filter(isServiceBooked);
+
+        completedRows = allOutput.filter(function(r) { return !isServiceBooked(r) && isServiceCompleted(r); });
+
+        notInterestedRows = allOutput.filter(function(r) { return !isServiceBooked(r) && !isServiceCompleted(r) && isNotInterested(r); });
+
+        processedData = allOutput;
+
+        renderAll();
+
+        hideOverlay();
+
+        const roleNote = filesSwapped ? ' Upload order was auto-swapped.' : '';
+
+        const statusType = qualityReport.canExport ? (qualityReport.state === 'review' ? 'warn' : 'ok') : 'err';
+
+        const statusText = qualityReport.canExport
+
+          ? `${output.length} post-sales lead(s) processed for ${dealer.name}.${roleNote}`
+
+          : `${output.length} post-sales lead(s) processed, but copy/export is blocked until validation issues are fixed.${roleNote}`;
+
+        setStatus('globalStatus', statusText, statusType);
+
+        document.getElementById('btnCopy').style.display = '';
+
+        document.getElementById('btnCopy').disabled = !qualityReport.canExport;
+
+        document.getElementById('btnExport').style.display = '';
+
+        document.getElementById('btnExport').disabled = !qualityReport.canExport;
+
+        document.getElementById('btnValidateAI').style.display = '';
+
+        document.getElementById('btnValidateAI').disabled = false;
+
+        document.getElementById('btnValidateAI').textContent = 'Validate with AI';
+
+        document.getElementById('btnValidateAI').onclick = function() { validateDispositionsWithLLM(); };
+
+        document.getElementById('btnReset').style.display = '';
+
+      } catch (e) {
+
+        hideOverlay();
+
+        console.error(e);
+
+        setStatus('globalStatus', `Error: ${e.message}`, 'err');
+
+      }
+
+    }
+
+
+
+    function renderAll() {
+
+      renderStats();
+
+      renderQualityReport();
+
+      renderTable();
+
+      renderPreviewTables();
+
+    }
+
+
+
+    function renderStats() {
+
+      const matched = processedData.filter(r => r._matched).length;
+
+      const booked = bookedRows.length;
+
+      const completed = completedRows.length;
+
+      const notInterested = notInterestedRows.length;
+
+      const notConnected = processedData.filter(r => r.outcome === 'Not Connected').length;
+
+      const unknown = processedData.filter(r => r.outcome === 'Unknown').length;
+
+      document.getElementById('statLeads').textContent = processedData.length;
+
+      document.getElementById('statMatched').textContent = matched;
+
+      document.getElementById('statBooked').textContent = booked;
+
+      document.getElementById('statCompleted').textContent = completed;
+
+      document.getElementById('statNotInterested').textContent = notInterested;
+
+      document.getElementById('statNotConnected').textContent = notConnected;
+
+      document.getElementById('statUnknown').textContent = unknown;
+
+      document.getElementById('statsBar').style.display = 'flex';
+
+    }
+
+
+
+    function renderQualityReport() {
+
+      if (!qualityReport) return;
+
+      const card = document.getElementById('qualityCard');
+
+      card.className = `quality-card ${qualityReport.state || 'review'}`;
+
+      document.getElementById('qualityTitle').textContent = qualityReport.title;
+
+      document.getElementById('qualityMeta').textContent = (qualityReport.summary || []).join(' - ');
+
+      document.getElementById('qualityWarnings').innerHTML = qualityReport.warnings
+
+        .map(w => `<div class="quality-item ${esc(w.level)}">${esc(w.text)}</div>`).join('');
+
+      document.getElementById('qualitySamples').innerHTML = qualityReport.samples
+
+        .map(s => `<div class="quality-item info"><strong>${esc(s.title)}</strong><br>${s.rows.map(r => esc(r)).join('<br>')}</div>`).join('');
+
+      card.style.display = 'block';
+
+    }
+
+
+
+    function renderTable() {
+
+      const dealer = getSelectedDealer();
+
+      const OUTPUT_COLUMNS = getOutputColumnsForDealer(document.getElementById('dealerSelect').value);
+
+      const head = document.getElementById('outputHead');
+
+      const body = document.getElementById('outputBody');
+
+      head.innerHTML = OUTPUT_COLUMNS.map(col => {
+
+        if (col.key === 'person_name') {
+
+          return `<th class="th-sortable" data-sort-key="person_name" onclick="toggleSort('person_name')">${esc(col.header)}</th>`;
+
+        }
+
+        if (col.key === 'phone_number') {
+
+          return `<th class="th-sortable" data-sort-key="phone_number" onclick="toggleSort('phone_number')">${esc(col.header)}</th>`;
+
+        }
+
+        if (col.key === 'disposition_detail') {
+
+          return `<th class="th-sortable" data-sort-key="disposition_detail" onclick="toggleSort('disposition_detail')">${esc(col.header)}</th>`;
+
+        }
+
+        return `<th>${esc(col.header)}</th>`;
+
+      }).join('');
+
+      body.innerHTML = '';
+
+      const sorted = getSortedData(processedData);
+
+      for (const r of sorted.slice(0, PREVIEW_LIMIT)) {
+
+        const tr = document.createElement('tr');
+
+        tr.innerHTML = OUTPUT_COLUMNS.map(col => {
+
+          const val = r[col.key] || '';
+
+          if (col.key === 'phone_number') return `<td class="cell-phone">${esc(val)}</td>`;
+
+          if (col.key === 'call_recording' && val) {
+
+            const href = safeRecordingHref(val);
+
+            if (!href) return `<td title="${esc(val)}">${esc(val)}</td>`;
+
+            return `<td><a class="cell-url" href="${esc(href)}" target="_blank" rel="noopener noreferrer" title="${esc(val)}">Recording</a></td>`;
+
+          }
+
+          if (col.key === 'updated_disposition') {
+
+            var st = r._ai_status || '';
+
+            var badge = '<span class="ai-badge pending">—</span>';
+
+            if (st === 'corrected') badge = '<span class="ai-badge corrected" title="AI suggested a correction">✎</span> ';
+
+            else if (st === 'verified') badge = '<span class="ai-badge verified" title="AI verified this disposition is correct">✓</span> ';
+
+            return '<td>' + badge + esc(val) + '</td>';
+
+          }
+
+          return `<td title="${esc(val)}">${esc(val)}</td>`;
+
+        }).join('');
+
+        body.appendChild(tr);
+
+      }
+
+      document.getElementById('tableCaption').textContent = processedData.length > PREVIEW_LIMIT
+
+        ? `Showing first ${PREVIEW_LIMIT} of ${processedData.length} rows`
+
+        : `${processedData.length} rows`;
+
+      document.getElementById('tableWrapper').style.display = 'block';
+
+      updateSortIndicators();
+
+    }
+
+
+
+    function renderPreviewTables() {
+
+      renderPreviewBookedTable();
+
+      renderPreviewCompletedTable();
+
+      renderPreviewNotInterestedTable();
+
+    }
+
+
+
+    function renderPreviewBookedTable() {
+
+      const dealerKey = document.getElementById('dealerSelect').value;
+
+      const isPerfectRiders = dealerKey === 'perfect_riders_service';
+
+      const wrapper = document.getElementById('bookedTableWrapper');
+
+      const body = document.getElementById('bookedBody');
+
+      const caption = document.getElementById('bookedCaption');
+
+      if (!bookedRows.length) { wrapper.style.display = 'none'; return; }
+
+      body.innerHTML = '';
+
+      bookedRows.slice(0, PREVIEW_LIMIT).forEach(function(r) {
+
+        var tr = document.createElement('tr');
+
+        var location = isPerfectRiders ? extractPerfectRidersLocation(r.summary || r.disposition_detail) : '';
+
+        var creRemarks = isPerfectRiders ? extractPerfectRidersCRE(r.summary || r.disposition_detail) : '';
+
+        tr.innerHTML = '<td class="cell-phone">' + esc(r.phone_number) + '</td>'
+
+          + '<td>' + esc(r.vehicle_model) + '</td>'
+
+          + '<td>' + esc(r.disposition_detail || r.disposition) + '</td>'
+
+          + '<td>' + esc(location) + '</td>'
+
+          + '<td>' + esc(r.call_date) + '</td>'
+
+          + '<td>' + esc(creRemarks) + '</td>'
+
+          + '<td></td>';
+
+        body.appendChild(tr);
+
+      });
+
+      caption.textContent = bookedRows.length > PREVIEW_LIMIT ? 'Showing first ' + PREVIEW_LIMIT + ' of ' + bookedRows.length + ' rows' : bookedRows.length + ' rows';
+
+      wrapper.style.display = 'block';
+
+    }
+
+
+
+    function renderPreviewCompletedTable() {
+
+      const dealerKey = document.getElementById('dealerSelect').value;
+
+      const isPerfectRiders = dealerKey === 'perfect_riders_service';
+
+      const wrapper = document.getElementById('completedTableWrapper');
+
+      const body = document.getElementById('completedBody');
+
+      const caption = document.getElementById('completedCaption');
+
+      if (!completedRows.length) { wrapper.style.display = 'none'; return; }
+
+      body.innerHTML = '';
+
+      completedRows.slice(0, PREVIEW_LIMIT).forEach(function(r) {
+
+        var tr = document.createElement('tr');
+
+        var location = isPerfectRiders ? extractPerfectRidersLocation(r.summary || r.disposition_detail) : '';
+
+        var creRemarks = isPerfectRiders ? extractPerfectRidersCRE(r.summary || r.disposition_detail) : '';
+
+        tr.innerHTML = '<td class="cell-phone">' + esc(r.phone_number) + '</td>'
+
+          + '<td>' + esc(r.vehicle_model) + '</td>'
+
+          + '<td>' + esc(r.disposition_detail || r.disposition) + '</td>'
+
+          + '<td>' + esc(location) + '</td>'
+
+          + '<td>' + esc(r.call_date) + '</td>'
+
+          + '<td>' + esc(creRemarks) + '</td>';
+
+        body.appendChild(tr);
+
+      });
+
+      caption.textContent = completedRows.length > PREVIEW_LIMIT ? 'Showing first ' + PREVIEW_LIMIT + ' of ' + completedRows.length + ' rows' : completedRows.length + ' rows';
+
+      wrapper.style.display = 'block';
+
+    }
+
+
+
+    function renderPreviewNotInterestedTable() {
+
+      const dealerKey = document.getElementById('dealerSelect').value;
+
+      const isPerfectRiders = dealerKey === 'perfect_riders_service';
+
+      const wrapper = document.getElementById('notInterestedTableWrapper');
+
+      const body = document.getElementById('notInterestedBody');
+
+      const caption = document.getElementById('notInterestedCaption');
+
+      if (!notInterestedRows.length) { wrapper.style.display = 'none'; return; }
+
+      body.innerHTML = '';
+
+      notInterestedRows.slice(0, PREVIEW_LIMIT).forEach(function(r) {
+
+        var tr = document.createElement('tr');
+
+        var creRemarks = isPerfectRiders ? extractPerfectRidersCRE(r.summary || r.disposition_detail) : '';
+
+        tr.innerHTML = '<td class="cell-phone">' + esc(r.phone_number) + '</td>'
+
+          + '<td>' + esc(r.vehicle_model) + '</td>'
+
+          + '<td>' + esc(r.summary) + '</td>'
+
+          + '<td>' + esc(r.call_date) + '</td>'
+
+          + '<td>' + esc(creRemarks) + '</td>';
+
+        body.appendChild(tr);
+
+      });
+
+      caption.textContent = notInterestedRows.length > PREVIEW_LIMIT ? 'Showing first ' + PREVIEW_LIMIT + ' of ' + notInterestedRows.length + ' rows' : notInterestedRows.length + ' rows';
+
+      wrapper.style.display = 'block';
+
+    }
+
+
+
+
+
+    function rowsToTsv(rows, keys) {
+
+      return rows.map(r => keys.map(k => String(r[k] ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ')).join('\t')).join('\n');
+
+    }
+
+
+
+    async function copyText(text, statusText) {
+
+      try {
+
+        await navigator.clipboard.writeText(text);
+
+      } catch {
+
+        const ta = document.createElement('textarea');
+
+        ta.value = text;
+
+        ta.style.position = 'fixed';
+
+        ta.style.left = '-9999px';
+
+        document.body.appendChild(ta);
+
+        ta.focus();
+
+        ta.select();
+
+        document.execCommand('copy');
+
+        document.body.removeChild(ta);
+
+      }
+
+      setStatus('globalStatus', statusText, 'ok');
+
+    }
+
+
+
+    async function copyData() {
+
+      if (!processedData.length) return;
+
+      if (qualityReport && !qualityReport.canExport) {
+
+        setStatus('globalStatus', 'Copy is blocked. Fix the validation issues shown in Data quality first.', 'err');
+
+        return;
+
+      }
+
+      const OUTPUT_COLUMNS = getOutputColumnsForDealer(document.getElementById('dealerSelect').value);
+
+      const sortedRows = getSortedData(processedData);
+
+      await copyText(rowsToTsv(sortedRows, OUTPUT_COLUMNS.map(c => c.key)), 'Copied rows. Paste with Ctrl+V in Zoho.');
+
+      const btn = document.getElementById('btnCopy');
+
+      const old = btn.innerHTML;
+
+      btn.textContent = 'Copied';
+
+      setTimeout(() => { btn.innerHTML = old; }, 3000);
+
+    }
+
+
+
+    async function copyPreviewRows(type) {
+
+      var rows, keys;
+
+      if (type === 'booked') {
+
+        rows = bookedRows;
+
+        keys = ['phone_number', 'vehicle_model', 'disposition_detail', 'service_location', 'call_date', 'cre_remarks', 'common_remarks'];
+
+      } else if (type === 'completed') {
+
+        rows = completedRows;
+
+        keys = ['phone_number', 'vehicle_model', 'disposition_detail', 'service_location', 'call_date', 'cre_remarks'];
+
+      } else {
+
+        rows = notInterestedRows;
+
+        keys = ['phone_number', 'vehicle_model', 'summary', 'call_date', 'cre_remarks'];
+
+      }
+
+      if (!rows || !rows.length) { setStatus('globalStatus', 'No rows to copy.', 'warn'); return; }
+
+      var data = rows.map(function(r) {
+
+        var dealerKey = document.getElementById('dealerSelect').value;
+
+        var isPerfectRiders = dealerKey === 'perfect_riders_service';
+
+        var location = isPerfectRiders ? extractPerfectRidersLocation(r.summary || r.disposition_detail) : '';
+
+        var creRemarks = isPerfectRiders ? extractPerfectRidersCRE(r.summary || r.disposition_detail) : '';
+
+        return keys.map(function(k) {
+
+          if (k === 'service_location') return location;
+
+          if (k === 'cre_remarks') return creRemarks;
+
+          if (k === 'common_remarks') return '';
+
+          if (k === 'disposition_detail') return r.disposition_detail || r.disposition || '';
+
+          if (k === 'summary') return r.summary || '';
+
+          return String(r[k] || '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+
+        }).join('\t');
+
+      }).join('\n');
+
+      await copyText(data, 'Copied ' + rows.length + ' preview row(s).');
+
+      var btnMap = { booked: 'btnCopyBooked', completed: 'btnCopyCompleted', notInterested: 'btnCopyNotInterested' };
+
+      var btn = document.getElementById(btnMap[type]);
+
+      if (btn) {
+
+        var orig = btn.textContent;
+
+        btn.textContent = 'Copied';
+
+        setTimeout(function() { btn.textContent = orig; }, 3000);
+
+      }
+
+    }
+
+
+
+    async function copyQualityReport() {
+
+      if (!qualityReport) return;
+
+      const lines = [
+
+        `Post-Sales Data Quality - ${qualityReport.title}`,
+
+        `Copy/export: ${qualityReport.canExport ? 'READY' : 'BLOCKED'}`,
+
+        ...(qualityReport.summary || []),
+
+        '',
+
+        ...qualityReport.warnings.map(w => `${w.level.toUpperCase()}: ${w.text}`),
+
+        '',
+
+        ...qualityReport.samples.flatMap(s => [s.title, ...s.rows.map(r => `- ${r}`), ''])
+
+      ];
+
+      await copyText(lines.join('\n'), 'Copied quality report.');
+
+      const btn = document.getElementById('btnCopyQuality');
+
+      btn.textContent = 'Copied';
+
+      setTimeout(() => { btn.textContent = 'Copy Report'; }, 1800);
+
+    }
+
+
+
+    function exportToExcel() {
+
+      if (!processedData.length) return;
+
+      if (qualityReport && !qualityReport.canExport) {
+
+        setStatus('globalStatus', 'Export is blocked. Fix the validation issues shown in Data quality first.', 'err');
+
+        return;
+
+      }
+
+      const OUTPUT_COLUMNS = getOutputColumnsForDealer(document.getElementById('dealerSelect').value);
+
+      const headers = OUTPUT_COLUMNS.map(c => c.header);
+
+      const keys = OUTPUT_COLUMNS.map(c => c.key);
+
+      const sortedRows = getSortedData(processedData);
+
+      const dataRows = [headers, ...sortedRows.map(r => keys.map(k => r[k] ?? ''))];
+
+      const wb = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dataRows), 'Output');
+
+
+
+      if (bookedRows.length) {
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+
+          ['PHONE_NUMBER', 'VEHICLE_MODEL', 'DISPOSITION_DETAILS', 'LOCATION', 'CALL_DATE (MM/DD/YYYY)', 'Perfect Riders CRE Remarks', 'COMMON REMARKS'],
+
+          ...bookedRows.map(function(r) {
+
+            var dealerKey = document.getElementById('dealerSelect').value;
+
+            var isPR = dealerKey === 'perfect_riders_service';
+
+            return [r.phone_number || '', r.vehicle_model || '', r.disposition_detail || r.disposition || '', isPR ? extractPerfectRidersLocation(r.summary || r.disposition_detail) : '', r.call_date || '', isPR ? extractPerfectRidersCRE(r.summary || r.disposition_detail) : '', ''];
+
+          })
+
+        ]), 'Service Booked');
+
+      }
+
+
+
+      if (completedRows.length) {
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+
+          ['PHONE_NUMBER', 'VEHICLE_MODEL', 'DISPOSITION_DETAILS', 'LOCATION', 'CALL_DATE (MM/DD/YYYY)', 'Perfect Riders CRE Remarks'],
+
+          ...completedRows.map(function(r) {
+
+            var dealerKey = document.getElementById('dealerSelect').value;
+
+            var isPR = dealerKey === 'perfect_riders_service';
+
+            return [r.phone_number || '', r.vehicle_model || '', r.disposition_detail || r.disposition || '', isPR ? extractPerfectRidersLocation(r.summary || r.disposition_detail) : '', r.call_date || '', isPR ? extractPerfectRidersCRE(r.summary || r.disposition_detail) : ''];
+
+          })
+
+        ]), 'Service Completed');
+
+      }
+
+
+
+      if (notInterestedRows.length) {
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+
+          ['PHONE_NUMBER', 'VEHICLE_MODEL', 'SUMMARY', 'CALL_DATE (MM/DD/YYYY)', 'Perfect Riders CRE Remarks'],
+
+          ...notInterestedRows.map(function(r) {
+
+            var dealerKey = document.getElementById('dealerSelect').value;
+
+            var isPR = dealerKey === 'perfect_riders_service';
+
+            return [r.phone_number || '', r.vehicle_model || '', r.summary || '', r.call_date || '', isPR ? extractPerfectRidersCRE(r.summary || r.disposition_detail) : ''];
+
+          })
+
+        ]), 'Not Interested');
+
+      }
+
+
+
+      const dealer = getSelectedDealer();
+
+      const safeName = dealer.name.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+
+      XLSX.writeFile(wb, `AutoNage_Post_Sales_${safeName}.xlsx`);
+
+    }
+
+
+
+    function resetAll() {
+
+      rawFile1 = null;
+
+      rawFile2 = null;
+
+      processedData = [];
+
+      qualityReport = null;
+
+      bookedRows = [];
+
+      completedRows = [];
+
+      notInterestedRows = [];
+
+      currentSortKey = 'person_name'; currentSortDir = 'asc';
+
+      ['f1', 'f2'].forEach(id => { document.getElementById(id).value = ''; });
+
+      ['dz1', 'dz2'].forEach(id => document.getElementById(id).classList.remove('has-file'));
+
+      document.getElementById('st1').className = 'dz-status';
+
+      document.getElementById('st2').className = 'dz-status';
+
+      document.getElementById('st1').textContent = 'Drag and drop or click to browse';
+
+      document.getElementById('st2').textContent = 'Drag and drop or click to browse';
+
+      ['statsBar', 'qualityCard', 'tableWrapper', 'bookedTableWrapper', 'completedTableWrapper', 'notInterestedTableWrapper'].forEach(function(id) {
+
+        var el = document.getElementById(id);
+
+        if (el) el.style.display = 'none';
+
+      });
+
+      ['outputBody', 'bookedBody', 'completedBody', 'notInterestedBody', 'qualityWarnings', 'qualitySamples', 'qualityMeta'].forEach(function(id) {
+
+        var el = document.getElementById(id);
+
+        if (el) el.innerHTML = '';
+
+      });
+
+      document.getElementById('btnCopy').style.display = 'none';
+
+      document.getElementById('btnExport').style.display = 'none';
+
+      document.getElementById('btnValidateAI').style.display = 'none';
+
+      document.getElementById('btnValidateAI').textContent = 'Validate with AI';
+
+      document.getElementById('btnValidateAI').onclick = function() { validateDispositionsWithLLM(); };
+
+      document.getElementById('btnReset').style.display = 'none';
+
+      setStatus('globalStatus', '', '');
+
+      updateSortIndicators();
+
+      updateProcessButton();
+
+    }
+
+
+
+    function setStatus(id, msg, type) {
+
+      const el = document.getElementById(id);
+
+      el.textContent = msg || '';
+
+      el.className = 'status-msg' + (type ? ' ' + type : '');
+
+    }
+
+
+
+    function showOverlay(msg) {
+
+      document.getElementById('processingMsg').textContent = msg;
+
+      document.getElementById('processingOverlay').style.display = 'flex';
+
+    }
+
+
+
+    function hideOverlay() {
+
+      document.getElementById('processingOverlay').style.display = 'none';
+
+    }
+
+
+
+    // ── AI Validation Status Bar (non-blocking) ──────────────────────────
+
+    let _aiStatusStartTime = 0;
+
+    let _aiStatusTimer = null;
+
+    let _aiStatusActive = false;
+
+
+
+    function showAiStatusBar(total) {
+
+      if (_aiStatusTimer) { clearInterval(_aiStatusTimer); _aiStatusTimer = null; }
+
+      _aiStatusActive = true;
+
+      _aiStatusStartTime = Date.now();
+
+      var bar = document.getElementById('aiValidationStatus');
+
+      var msg = document.getElementById('aiStatusMsg');
+
+      var batch = document.getElementById('aiStatusBatch');
+
+      var corrected = document.getElementById('aiStatusCorrected');
+
+      var elapsed = document.getElementById('aiStatusElapsed');
+
+      var fill = document.getElementById('aiStatusFill');
+
+      var actions = document.getElementById('aiStatusActions');
+
+      
+
+      bar.style.display = 'block';
+
+      bar.className = 'ai-status-bar';
+
+      msg.textContent = 'AI validating dispositions…';
+
+      msg.className = 'ai-status-msg';
+
+      batch.textContent = '0/' + total;
+
+      batch.className = 'ai-status-badge';
+
+      corrected.style.display = 'none';
+
+      fill.style.width = '0%';
+
+      fill.className = 'ai-status-fill';
+
+      
+
+      actions.innerHTML = '<button class="ai-status-btn cancel" id="aiStatusCancel" onclick="cancelAiValidation()">Cancel</button>';
+
+      
+
+      if (_aiStatusTimer) clearInterval(_aiStatusTimer);
+
+      _aiStatusTimer = setInterval(function() {
+
+        var secs = Math.floor((Date.now() - _aiStatusStartTime) / 1000);
+
+        var min = Math.floor(secs / 60);
+
+        var s = secs % 60;
+
+        elapsed.textContent = (min > 0 ? min + 'm ' : '') + s + 's';
+
+      }, 1000);
+
+      
+
+      aiValidationController = new AbortController();
+
+    }
+
+
+
+    function cancelAiValidation() {
+
+      if (aiValidationController) {
+
+        aiValidationController.abort();
+
+        // Don't null here — hideAiStatusBar detects signal.aborted and cleans up
+
+      }
+
+    }
+
+
+
+    function updateAiStatusBar(done, total, message, pct, correctedResults) {
+
+      var batch = document.getElementById('aiStatusBatch');
+
+      var fill = document.getElementById('aiStatusFill');
+
+      var msg = document.getElementById('aiStatusMsg');
+
+      var corrected = document.getElementById('aiStatusCorrected');
+
+      
+
+      if (batch) batch.textContent = done + '/' + total;
+
+      if (fill) fill.style.width = pct + '%';
+
+      if (msg) msg.textContent = message || 'AI validating…';
+
+      
+
+      if (correctedResults) {
+
+        var count = Object.keys(correctedResults).length;
+
+        if (count > 0) {
+
+          corrected.style.display = 'inline';
+
+          corrected.textContent = count + ' corrected';
+
+        }
+
+      }
+
+    }
+
+
+
+    function hideAiStatusBar(correctedResults) {
+
+      if (_aiStatusTimer) {
+
+        clearInterval(_aiStatusTimer);
+
+        _aiStatusTimer = null;
+
+      if (!_aiStatusActive) return;
+
+      _aiStatusActive = false;
+
+      }
+
+      
+
+      if (aiValidationController && aiValidationController.signal.aborted) {
+
+        var bar = document.getElementById('aiValidationStatus');
+
+        var msg = document.getElementById('aiStatusMsg');
+
+        var batch = document.getElementById('aiStatusBatch');
+
+        var fill = document.getElementById('aiStatusFill');
+
+        var actions = document.getElementById('aiStatusActions');
+
+        
+
+        bar.className = 'ai-status-bar aborted';
+
+        msg.textContent = 'AI validation cancelled.';
+
+        msg.className = 'ai-status-msg err';
+
+        fill.className = 'ai-status-fill err';
+
+        actions.innerHTML = '<button class="ai-status-btn" onclick="document.getElementById(\'aiValidationStatus\').style.display=\'none\'">Dismiss</button>' +
+
+          '<button class="ai-status-btn primary" onclick="validateDispositionsWithLLM()">↻ Run again</button>';
+
+        aiValidationController = null;
+
+        return;
+
+      }
+
+      
+
+      var correctedCount = correctedResults ? Object.keys(correctedResults).length : 0;
+
+      var totalDone = document.getElementById('aiStatusBatch');
+
+      var totalText = totalDone ? totalDone.textContent : 'done';
+
+      
+
+      var bar = document.getElementById('aiValidationStatus');
+
+      var msg = document.getElementById('aiStatusMsg');
+
+      var batch = document.getElementById('aiStatusBatch');
+
+      var fill = document.getElementById('aiStatusFill');
+
+      var elapsed = document.getElementById('aiStatusElapsed');
+
+      var actions = document.getElementById('aiStatusActions');
+
+      var corrected = document.getElementById('aiStatusCorrected');
+
+      
+
+      bar.className = 'ai-status-bar';
+
+      msg.textContent = correctedCount > 0
+
+        ? 'AI validation complete — ' + correctedCount + ' disposition(s) corrected. Check the Updated Disposition column.'
+
+        : 'AI validation complete — all dispositions appear correct.';
+
+      msg.className = 'ai-status-msg ok';
+
+      batch.textContent = totalText;
+
+      batch.className = 'ai-status-badge done';
+
+      if (corrected) {
+
+        corrected.style.display = correctedCount > 0 ? 'inline' : 'none';
+
+        if (correctedCount > 0) corrected.textContent = correctedCount + ' corrected';
+
+      }
+
+      fill.className = 'ai-status-fill ok';
+
+      fill.style.width = '100%';
+
+      
+
+      if (elapsed) {
+
+        var secs = Math.floor((Date.now() - _aiStatusStartTime) / 1000);
+
+        var min = Math.floor(secs / 60);
+
+        var s = secs % 60;
+
+        elapsed.textContent = (min > 0 ? min + 'm ' : '') + s + 's';
+
+      }
+
+      
+
+      actions.innerHTML = '<button class="ai-status-btn" onclick="document.getElementById(\'aiValidationStatus\').style.display=\'none\'">Dismiss</button>' +
+
+        '<button class="ai-status-btn primary" onclick="validateDispositionsWithLLM(true)">↻ Re-run AI</button>';
+
+      
+
+      aiValidationController = null;
+
+    }
+
+
+
+    function tick() {
+
+      return new Promise(resolve => setTimeout(resolve, 20));
+
+    }
+
+
+
+    function updateProcessButton() {
+
+      const dealer = getSelectedDealer();
+
+      document.getElementById('btnProcess').disabled = !(rawFile1 && rawFile2);
+
+    }
+
+
+
+    function setFileStatus(id, filename) {
+
+      const el = document.getElementById(id);
+
+      el.className = 'dz-status ok';
+
+      el.textContent = `Loaded: ${filename}`;
+
+    }
+
+
+
+    function handleDealerChange() {
+
+      const dealer = getSelectedDealer();
+
+      document.getElementById('leadCols').textContent = dealer.leadColumns.join(' - ');
+
+      document.getElementById('sessionCols').textContent = dealer.sessionColumns.join(' - ');
+
+      setStatus('globalStatus', `${dealer.name} ${dealer.workflow} selected.`, '');
+
+      updateProcessButton();
+
+    }
+
+
+
+    document.getElementById('f1').addEventListener('change', function () {
+
+      if (!this.files[0]) return;
+      if (!validateFileSize(this.files[0])) { this.value = ''; return; }
+
+      rawFile1 = this.files[0];
+
+      setFileStatus('st1', rawFile1.name);
+
+      document.getElementById('dz1').classList.add('has-file');
+
+      updateProcessButton();
+
+    });
+
+
+
+    document.getElementById('f2').addEventListener('change', function () {
+
+      if (!this.files[0]) return;
+      if (!validateFileSize(this.files[0])) { this.value = ''; return; }
+
+      rawFile2 = this.files[0];
+
+      setFileStatus('st2', rawFile2.name);
+
+      document.getElementById('dz2').classList.add('has-file');
+
+      updateProcessButton();
+
+    });
+
+
+
+    function setupDragDrop(dzId, fileInputId) {
+
+      const dz = document.getElementById(dzId);
+
+      const input = document.getElementById(fileInputId);
+
+      dz.addEventListener('dragover', e => {
+
+        e.preventDefault();
+
+        dz.classList.add('drag-over');
+
+      });
+
+      dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+
+      dz.addEventListener('drop', e => {
+
+        e.preventDefault();
+
+        dz.classList.remove('drag-over');
+
+        const file = e.dataTransfer.files[0];
+
+        if (!file) return;
+
+        const dt = new DataTransfer();
+
+        dt.items.add(file);
+
+        input.files = dt.files;
+
+        input.dispatchEvent(new Event('change'));
+
+      });
+
+      dz.addEventListener('keydown', e => {
+
+        if (e.key === 'Enter' || e.key === ' ') input.click();
+
+      });
+
+    }
+
+
+
+    function syncBrandLogo(t) {
+
+      document.querySelectorAll('.brand-mark img').forEach(img => {
+
+        img.src = t === 'dark' ? img.dataset.darkLogo : img.dataset.lightLogo;
+
+      });
+
+    }
+
+
+
+    function applyTheme(t) {
+
+      document.documentElement.setAttribute('data-theme', t);
+
+      localStorage.setItem('jejo-theme', t);
+
+      syncBrandLogo(t);
+
+    }
+
+
+
+    function toggleTheme() {
+
+      const current = document.documentElement.getAttribute('data-theme');
+
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+
+    }
+
+
+
+    /* ═══════════════════════════════════════════════════════════════════════
+
+       LLM VALIDATION — POST-SALES DISPOSITIONS
+
+       ═══════════════════════════════════════════════════════════════════════ */
+
+    function getConfigNumber(key, fallback) {
+      var cfg = window.JEJO_CONFIG || {};
+      var value = Number(cfg[key]);
+      return Number.isFinite(value) && value > 0 ? value : fallback;
+    }
+
+    function getLlmModel() {
+      var cfg = window.JEJO_CONFIG || {};
+      return cfg.grydModel || 'gcp-gemini-3.1-flash-lite-preview';
+    }
+
+
+    function sanitizeForPrompt(text) {
+      if (!text) return '';
+      var s = String(text);
+      s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+      s = s.replace(/"/g, "'");
+      if (s.length > LLM_PROMPT_CHAR_LIMIT) s = s.substring(0, LLM_PROMPT_CHAR_LIMIT) + '...[truncated]';
+      return s;
+    }
+
+    var LLM_DISPOSITION_BATCH_SIZE = getConfigNumber('llmDispositionBatchSize', getConfigNumber('llmBatchSize', 6));
+    var LLM_DISPOSITION_MAX_CONCURRENT = getConfigNumber('llmDispositionMaxConcurrent', 1);
+    var LLM_DISPOSITION_MAX_RETRIES = getConfigNumber('llmDispositionMaxRetries', getConfigNumber('llmMaxRetries', 1));
+    var LLM_DISPOSITION_TIMEOUT_MS = getConfigNumber('llmDispositionTimeoutMs', getConfigNumber('llmRequestTimeoutMs', 90000));
+    var LLM_PROMPT_CHAR_LIMIT = getConfigNumber('llmDispositionPromptCharLimit', getConfigNumber('llmPromptCharLimit', 2500));
+    var LLM_DISPOSITION_MAX_TOKENS = getConfigNumber('llmDispositionMaxOutputTokens', getConfigNumber('llmMaxOutputTokens', 1800));
+
+    function getApiEndpoint() {
+      var cfg = window.JEJO_CONFIG || {};
+      return (cfg.grydEndpoint || 'http://localhost:3456') + '/gryd/v1/chat/completions';
+    }
+
+    function getApiKey() { return 'GRYD_ACTIVE'; }
+
+
+
+    function hashStr(str) {
+
+      var h = 0;
+
+      for (var i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; }
+
+      return 'h' + Math.abs(h).toString(36);
+
+    }
+
+
+
+    var POST_SALES_DISPOSITIONS = {
+
+      "Voicemail": "If the customer has asked to leave a message or voicemail.",
+
+      "Rejected": "If the customer has rejected the offer or to even speak with the agent. repeated rejection.",
+
+      "Language barrier": "If the customer has asked to speak in a different language and did not finish the conversation or intent of the campaign.",
+
+      "Vehicle is commercial or part of a fleet": "The vehicle is a commercial vehicle and not applicable for the campaign purpose.",
+
+      "Vehicle is not being run": "Vehicle is unused and not being run.",
+
+      "Requires special spare parts": "The vehicle requires special spare parts for repair.",
+
+      "Others": "All other disposition details not listed above.",
+
+      "Wrong contact number": "Customer tells the agent they have the wrong person or number that was contacted",
+
+      "Has sold/given away the car": "The customer has sold or given away the vehicle.",
+
+      "Has moved to another location": "The customer has moved to another location.",
+
+      "Cannot make decision on servicing": "The customer the agent has called is not the right person to make the decision.",
+
+      "Will call workshop themselves": "The customer will contact the workshop themselves.",
+
+      "Requested Callback": "The customer asked the agent to call back at a later date and or time.",
+
+      "Looking for a discount": "The customer is looking for a discount on the campaign purpose.",
+
+      "Has serviced car in another dealership": "The customer has serviced the vehicle in another dealership.",
+
+      "Will decide tomorrow": "The customer said they would decide to service the vehicle tomorrow.",
+
+      "Will decide within 1 to 3 days": "The customer said they would decide to service the vehicle within 1 to 3 days.",
+
+      "Will decide within 4 to 7 days": "The customer said they would decide to service the vehicle within 4 to 7 days.",
+
+      "Will decide within 8 to 14 days": "The customer said they would decide to service the vehicle within 8 to 14 days.",
+
+      "Will decide within 15 to 30 days": "The customer said they would decide to service the vehicle within 15 to 30 days.",
+
+      "Will decide within 31 to 60 days": "The customer said they would decide to service the vehicle within 31 to 60 days.",
+
+      "Will decide within 61 to 90 days": "The customer said they would decide to service the vehicle within 61 to 90 days.",
+
+      "Will decide after 90 days": "The customer said they would decide to service the vehicle after 90 days.",
+
+      "Unsubscribed": "The customer asked to unsubscribed from the campaign.",
+
+      "Call Disconnected": "The call ended abruptly without completing the campaign objective.",
+
+      "Audio Issue": "There was issues with hearing the customer or the agent for either party.",
+
+      "Call Quality Issue": "There was issues with the quality of the call.",
+
+      "Connection Issue": "There was issues with the connection between the customer and the agent.",
+
+      "Customer Busy": "The customer was busy.",
+
+      "No Response": "The customer did not say anything at all.",
+
+      "Price Inquiry": "The customer is interested in the price of the service.",
+
+      "Lost to Competition": "the customer already did the campaign objective from a competitors workshop",
+
+      "Invalid Lead": "Not a valid lead.",
+
+      "Not Interested": "The customer specifically said they are not interested or declined the offer/service.",
+
+      "Service Postponed": "They decided or implied they will postpone the service.",
+
+      "Showroom Visit Planned": "Already booked a showroom visit.",
+
+      "Existing Dealer Contact": "The customer already did the campaign objective from an existing dealership.",
+
+      "Contact Fatigue": "customer implied they were being contacted too many times by the agent.",
+
+      "Converted": "The customer completes the purpose of the campaign and provides the necessary information.",
+
+      "Talk to Human": "The customer asked to speak to a human agent or customer executive instead of the digital assistant.",
+
+      "Interested in another car same dealership": "The customer is interested in a different vehicle model from the same dealership."
+
+    };
+
+
+
+    var DEALER_LANGUAGES = {
+
+      perfect_riders_service: ['Kannada', 'English'],
+
+      fortune_service: ['Telugu', 'English'],
+
+      ambal_service: ['Tamil', 'English'],
+
+      bullmen_service: ['Tamil', 'English'],
+
+      pressana_service_feedback: ['Tamil', 'English'],
+
+      pressana_post_service_feedback: ['Tamil', 'English'],
+
+      suryabala_service: ['Tamil', 'English'],
+
+      icare_feedback: ['Tamil', 'English']
+
+    };
+
+
+
+    async function validateDispositionsWithLLM(force) {
+
+      if (!processedData || processedData.length === 0) return;
+
+
+
+      if (_aiValidationRunning) return;
+      _aiValidationRunning = true;
+
+
+      document.getElementById('btnValidateAI').textContent = 'Validating...';
+
+
+
+      const apiKey = getApiKey();
+
+      if (!apiKey) {
+
+        setStatus('globalStatus', 'AI key required. Paste your key above and click Save.', 'err');
+
+        return;
+
+      }
+
+
+
+      const dispKeys = Object.keys(POST_SALES_DISPOSITIONS);
+
+      const dispDefs = dispKeys.map(k => `- "${k}": ${POST_SALES_DISPOSITIONS[k]}`).join('\n');
+
+
+
+      var dealerKey = document.getElementById('dealerSelect').value;
+
+      var dealerCfg = DEALERSHIPS[dealerKey];
+
+      var dealerName = dealerCfg ? dealerCfg.name : 'Unknown Dealership';
+
+      var supportedLangs = DEALER_LANGUAGES[dealerKey] || ['English'];
+
+
+
+      const candidates = [];
+
+      for (var i = 0; i < processedData.length; i++) {
+
+        var r = processedData[i];
+
+        var summ = (r.summary || '').trim();
+
+        var hist = (r.session_history || '').trim();
+
+        var disp = (r.disposition_detail || r.disposition || '').trim();
+
+        var hasText = (summ && summ !== 'No Response' && summ !== 'The session history is empty and contains no content to summarize.') || (hist && hist.length > 0);
+
+        if (hasText && disp) {
+
+          candidates.push({ index: i, summary: summ, history: hist, currentDisp: disp, callDate: r.call_date || '', outcome: r.outcome || '', vehicleModel: r.vehicle_model || '', campaignId: r.campaign_id || '', dealerName: dealerName, supportedLanguages: supportedLangs.join(', ') });
+
+        }
+
+      }
+
+
+
+      if (candidates.length === 0) {
+
+        setStatus('globalStatus', 'No rows with session summaries to validate.', 'warn');
+
+        return;
+
+      }
+
+
+
+      showAiStatusBar(candidates.length);
+
+
+
+      var _aiValidationRunning = false;
+
+      var corrected = 0;
+
+      var BATCH_SIZE = LLM_DISPOSITION_BATCH_SIZE;
+
+      var correctedResults = {};
+
+
+
+      var cacheInput = candidates.map(function(c) { return c.summary + '||' + c.history + '||' + c.currentDisp + '||' + c.callDate + '||' + c.outcome + '||' + c.vehicleModel + '||' + c.campaignId + '||' + c.dealerName + '||' + c.supportedLanguages; }).join('|');
+
+      var cacheKey = 'ps-disp-validate-v3-history-' + hashStr(cacheInput);
+
+      var cached = force ? null : localStorage.getItem(cacheKey);
+
+      var cachedParsed = null;
+
+      if (cached) {
+
+        try {
+
+          cachedParsed = JSON.parse(cached);
+
+        } catch(e) { cached = null; }
+
+      }
+
+
+
+      if (!cached) {
+
+        var runnerOpts = {
+
+          items: candidates,
+
+          batchSize: BATCH_SIZE,
+
+          maxConcurrent: LLM_DISPOSITION_MAX_CONCURRENT,
+
+          minGapMs: 500,
+
+          maxRetries: LLM_DISPOSITION_MAX_RETRIES,
+
+          requestTimeoutMs: LLM_DISPOSITION_TIMEOUT_MS,
+
+          cachedData: null,
+
+          getCacheKey: null,
+
+          buildPrompt: function(batch, batchIndex) {
+
+            var dispKeys = Object.keys(POST_SALES_DISPOSITIONS);
+
+            var dispDefs = dispKeys.map(function(k) { return '- "' + k + '": ' + POST_SALES_DISPOSITIONS[k]; }).join('\n');
+
+            var dealerContext = 'Dealership: "' + (batch.length > 0 ? batch[0].dealerName : '') + '"\nSupported Languages: "' + (batch.length > 0 ? batch[0].supportedLanguages : '') + '"';
+
+            var promptLines = batch.map(function(c, idx) {
+
+              var safeSummary = sanitizeForPrompt(c.summary);
+
+              var safeHistory = sanitizeForPrompt(c.history);
+
+              var safeDisp = sanitizeForPrompt(c.currentDisp);
+
+              var safeDealer = sanitizeForPrompt(c.dealerName);
+
+              var safeLangs = sanitizeForPrompt(c.supportedLanguages);
+
+              var safeModel = sanitizeForPrompt(c.vehicleModel);
+
+              var safeOutcome = sanitizeForPrompt(c.outcome);
+
+              var safeDate = sanitizeForPrompt(c.callDate);
+
+              var safeCampaign = sanitizeForPrompt(c.campaignId);
+
+              var line = 'Row ' + idx + ':';
+
+              if (safeSummary) line += '\n--- BEGIN SUMMARY ---\n' + safeSummary + '\n--- END SUMMARY ---';
+
+              if (safeHistory) line += '\n--- BEGIN CONVERSATION HISTORY ---\n' + safeHistory + '\n--- END CONVERSATION HISTORY ---';
+
+              line += '\nCurrent Disposition: "' + safeDisp + '"';
+
+              line += '\nDealership: "' + safeDealer + '"';
+
+              line += '\nSupported Languages: "' + safeLangs + '"';
+
+              if (safeModel) line += '\nVehicle Model: "' + safeModel + '"';
+
+              if (safeOutcome) line += '\nCall Outcome: "' + safeOutcome + '"';
+
+              if (safeDate) line += '\nCall Date: "' + safeDate + '"';
+
+              if (safeCampaign) line += '\nCampaign ID: "' + safeCampaign + '"';
+
+              return line;
+
+            }).join('\n\n---\n\n');
+
+
+
+            var systemMsg = 'You are a fair and accurate disposition auditor for an automotive post-sales (service/feedback) campaign. Your job is to evaluate whether the "Current Disposition" accurately describes the call. You are provided with two evidence sources: 1) a Summary (short description), and 2) a Conversation History (full transcript with timestamps). The Conversation History is the STRONGEST evidence if it is detailed and clear. However, if the Conversation History is empty, extremely short (e.g., just greeting exchange), or inconclusive, you MUST rely on the Summary and Current Disposition — do not flag them as incorrect unless there is a clear contradiction. Be balanced: if the current disposition reasonably fits the call context, mark it as correct (isCorrect: true). Only flag isCorrect: false when there is a clear mismatch, contradiction, or a significantly more accurate disposition available.\n' + window.INJECTION_GUARD;
+
+
+
+            var examples = 'Example 1 (CORRECT):\nTranscript: "Customer: Yes, I already serviced my bike at your workshop last Friday. Agent: Great, thank you for confirming."\nCurrent Disposition: "Vehicle Serviced"\n→ isCorrect: true, correctedDisposition: null\nReason: Transcript confirms the vehicle was serviced at this dealership workshop.\n\n' +
+              'Example 2 (CORRECT - SHORT TRANSCRIPT):\nTranscript: "Customer: Hello?"\nSummary: "Voicemail reached, left a callback message."\nCurrent Disposition: "Voicemail"\n→ isCorrect: true, correctedDisposition: null\nReason: Transcript is inconclusive, but the Summary matches the disposition perfectly.\n\n' +
+              'Example 3 (INCORRECT):\nTranscript: "Customer: I will bring the car next week on Saturday for service."\nCurrent Disposition: "Not Interested"\n→ isCorrect: false, correctedDisposition: "Will call workshop themselves"\nReason: Customer intends to service the vehicle — they did not refuse the service.\n\n' +
+              'Example 4 (INCORRECT):\nTranscript: "Customer: I sold my car last month to someone else."\nCurrent Disposition: "Not Interested"\n→ isCorrect: false, correctedDisposition: "Has sold/given away the car"\nReason: "Has sold/given away the car" is the specific and correct disposition, which is more accurate than "Not Interested".\n\n' +
+              'Example 5 (CORRECT):\nTranscript: "Customer: I am very busy right now, please call me tomorrow morning. Agent: Sure."\nCurrent Disposition: "Requested Callback"\n→ isCorrect: true, correctedDisposition: null\nReason: The customer explicitly requested a callback later, matching the disposition.\n\n' +
+              'Example 6 (INCORRECT):\nTranscript: "Customer: I already serviced my car at a local workshop nearby."\nCurrent Disposition: "Vehicle Serviced"\n→ isCorrect: false, correctedDisposition: "Has serviced car in another dealership"\nReason: "Vehicle Serviced" is only for servicing done under this dealership campaign. Servicing elsewhere matches "Has serviced car in another dealership".\n\n' +
+              'Example 7 (INCORRECT):\nTranscript: "Customer: Hello? I can\'t hear you, hello?" [Call dropped]\nCurrent Disposition: "No Response"\n→ isCorrect: false, correctedDisposition: "Audio Issue"\nReason: The call disconnected due to hearing/audio problems, so "Audio Issue" is correct.';
+
+
+
+            var userPrompt = 'VALID DISPOSITIONS:\n' + dispDefs + '\n\nLANGUAGE BARRIER RULE:\nThe active dealership is "' + dealerContext + '". The customer\'s transcript/summary may be in a language different from the dealership\'s supported languages. If the customer requested or attempted to speak in a language NOT in the supported languages list for their dealership, the disposition MUST be "Language barrier". Pay close attention to phrases like "I don\'t understand", "speak [language]", "[language] please", etc. — especially if the requested language is outside the supported set. The supported languages are only those listed for the dealership; any other language the customer requests is a barrier.\n\nEXAMPLES (learn from these patterns):\n' + examples + '\n\nNow evaluate these rows. For EACH row, respond with ONE JSON object:\n{"rowIndex":0,"isCorrect":true,"correctedDisposition":null,"confidence":"high","reason":"The summary clearly matches the disposition."}\n\nRows:\n' + window.USER_DATA_DELIMITER + '\n' + promptLines + '\n' + window.USER_DATA_END_DELIMITER + '\n\nRespond as a JSON array of objects, one per row in the same order. ONLY valid JSON.';
+
+
+
+            return {
+
+              system: systemMsg,
+
+              user: userPrompt,
+
+              temperature: 0.3,
+
+              maxTokens: LLM_DISPOSITION_MAX_TOKENS
+
+            };
+
+          },
+
+          parseResponse: function(text, batch, batchIndex) {
+
+            try {
+              var fullParsed = JSON.parse(text);
+              if (typeof fullParsed === 'string') {
+                text = fullParsed;
+              } else if (Array.isArray(fullParsed)) {
+                return fullParsed.map(function(item, idx) {
+                  return {
+                    rowIndex: (batchIndex * BATCH_SIZE) + idx,
+                    isCorrect: item.isCorrect,
+                    correctedDisposition: item.correctedDisposition,
+                    confidence: item.confidence,
+                    reason: item.reason
+                  };
+                });
+              }
+            } catch(e) {}
+
+            var cleaned = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+
+            cleaned = cleaned.replace(/\\"/g, '"');
+
+            var match = cleaned.match(/\[[\s\S]*\]/);
+
+            if (match) {
+
+              var parsed = JSON.parse(match[0]);
+
+              return parsed.map(function(item, idx) {
+
+                return {
+
+                  rowIndex: (batchIndex * BATCH_SIZE) + idx,
+
+                  isCorrect: item.isCorrect,
+
+                  correctedDisposition: item.correctedDisposition,
+
+                  confidence: item.confidence,
+
+                  reason: item.reason
+
+                };
+
+              });
+
+            }
+
+            return [];
+
+          },
+
+          buildHeaders: function() {
+            var cfg = window.JEJO_CONFIG || {};
+            return {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-GRYD-TOKEN': sessionStorage.getItem('gryd_token') || '',
+              'X-GRYD-SESSION-ID': sessionStorage.getItem('gryd_session_id') || '',
+              'X-GRYD-ENTERPRISE-ID': sessionStorage.getItem('gryd_enterprise_id') || 'autocrm',
+              'X-GRYD-SIGNUP-TOKEN': cfg.grydSignupToken || '',
+              'X-GRYD-APPLICATION-ID': 'autocrm'
+            };
+            },
+
+          onProgress: function(done, total, message, pct) {
+
+            updateAiStatusBar(done, total, message, pct, correctedResults);
+
+          },
+
+          signal: aiValidationController ? aiValidationController.signal : null
+
+        };
+
+
+
+        var runnerResult = await runLlmBatches(runnerOpts);
+
+        
+
+        // Check if aborted — don't apply results if user cancelled
+
+        if (runnerResult.aborted) {
+
+          hideAiStatusBar(correctedResults);
+
+          return;
+
+        }
+
+        
+
+        corrected = runnerResult.correctedCount;
+
+
+
+        // Build cache array
+
+        var cacheArray = [];
+
+        for (var idx = 0; idx < candidates.length; idx++) {
+
+          var decision = runnerResult.results.get(idx);
+
+          if (decision && decision.isCorrect === false && decision.correctedDisposition) {
+
+            cacheArray.push({ rowIndex: candidates[idx].index, isCorrect: false, correctedDisposition: decision.correctedDisposition });
+
+          } else {
+
+            cacheArray.push({ rowIndex: idx, isCorrect: true, correctedDisposition: null });
+
+          }
+
+        }
+
+        try { localStorage.setItem(cacheKey, JSON.stringify(cacheArray)); } catch(e) {}
+
+
+
+        // Apply corrections
+
+        for (var ri = 0; ri < candidates.length; ri++) {
+
+          var dec = runnerResult.results.get(ri);
+
+          if (dec && dec.isCorrect === false && dec.correctedDisposition) {
+
+            correctedResults[candidates[ri].index] = dec.correctedDisposition;
+
+          }
+
+        }
+
+      } else {
+
+        // Cache hit
+
+        try {
+
+          for (var ci = 0; ci < cachedParsed.length; ci++) {
+
+            var item = cachedParsed[ci];
+
+            if (item.isCorrect === false && item.correctedDisposition) {
+
+              correctedResults[item.rowIndex] = item.correctedDisposition;
+
+            }
+
+          }
+
+          corrected = Object.keys(correctedResults).length;
+
+        } catch(e) {}
+
+      }
+
+    try {
+
+var correctedIndices = Object.keys(correctedResults);
+
+      for (var k = 0; k < correctedIndices.length; k++) {
+
+        var rowIdx = parseInt(correctedIndices[k]);
+
+        if (processedData[rowIdx]) {
+
+          processedData[rowIdx].updated_disposition = correctedResults[rowIdx];
+
+          processedData[rowIdx]._ai_status = 'corrected';
+
+        }
+
+      }
+
+      for (var ci = 0; ci < candidates.length; ci++) {
+
+        var cand = candidates[ci];
+
+        if (processedData[cand.index] && !processedData[cand.index]._ai_status) {
+
+          processedData[cand.index]._ai_status = 'verified';
+
+        }
+
+      }
+
+
+
+      hideAiStatusBar(correctedResults);
+
+      if (correctedIndices.length > 0) {
+
+        renderTable();
+
+        // Re-classify preview tables to pick up updated_disposition changes from AI
+
+        var allForPreview = processedData;
+
+        bookedRows = allForPreview.filter(isServiceBooked);
+
+        completedRows = allForPreview.filter(function(r) { return !isServiceBooked(r) && isServiceCompleted(r); });
+
+        notInterestedRows = allForPreview.filter(function(r) { return !isServiceBooked(r) && !isServiceCompleted(r) && isNotInterested(r); });
+
+        renderPreviewBookedTable();
+
+        renderPreviewCompletedTable();
+
+        renderPreviewNotInterestedTable();
+
+        setStatus('globalStatus', 'AI validated ' + candidates.length + ' rows, corrected ' + correctedIndices.length + ' dispositions. Check Updated Disposition column.', 'ok');
+
+      } else {
+
+        setStatus('globalStatus', 'AI validated ' + candidates.length + ' rows — all dispositions appear correct.', 'ok');
+
+      }
+
+
+
+      document.getElementById('btnValidateAI').textContent = '↻ Re-run AI';
+
+      document.getElementById('btnValidateAI').onclick = function() { validateDispositionsWithLLM(true); };
+
+    } catch (e) {
+      console.error('AI validation failed:', e);
+      setStatus('globalStatus', 'AI validation error: ' + (e.message || 'unknown error'), 'err');
+      hideAiStatusBar({});
+    } finally {
+      _aiValidationRunning = false;
+      document.getElementById('btnValidateAI').textContent = '↻ Re-run AI';
+      document.getElementById('btnValidateAI').onclick = function() { validateDispositionsWithLLM(true); };
+    }
+    }
+
+
+    syncApiKeyControl();
+
+    applyTheme(localStorage.getItem('jejo-theme') || 'dark');
+
+    setupDragDrop('dz1', 'f1');
+
+    setupDragDrop('dz2', 'f2');
+
+    handleDealerChange();
+
+  </script>
+
+</body>
+
+
+
+</html>
+

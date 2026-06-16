@@ -1,0 +1,22 @@
+# Secrets
+.env
+.env.*
+*.local
+server/.env
+config.js
+
+# Temp & cache
+set_key_temp.txt
+.chrome-profile/
+*.log
+.DS_Store
+Thumbs.db
+nul
+
+# IDE
+.vscode/
+.idea/
+.vs/
+
+# Dependencies (if any)
+node_modules/

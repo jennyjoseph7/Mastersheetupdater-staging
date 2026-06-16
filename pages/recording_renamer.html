@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+  
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https: https://autobot-webapp-dev.gryd.in http://localhost:3456; form-action 'self'; base-uri 'self'; object-src 'none'; " />
+  <script>
+    (function () {
+      var theme = localStorage.getItem('jejo-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <script>
+    (function() {
+      function requireAuth() {
+        var token = sessionStorage.getItem('gryd_token');
+        var expiry = sessionStorage.getItem('gryd_expiry');
+        if (!token || !expiry || parseInt(expiry) <= Math.floor(Date.now() / 1000)) {
+          window.location.replace('../login.html');
+          return false;
+        }
+        return true;
+      }
+      requireAuth();
+      window.addEventListener('pageshow', function() { requireAuth(); });
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') requireAuth();
+      });
+      window.addEventListener('unload', function() {});
+    })();
+  </script>
+  <title>Recording Renamer - AutoNage</title>
+  <meta name="description" content="Rename local call recordings from a processed Pre-Sales Sync export." />
+  <link rel="stylesheet" href="../assets/fonts/fonts.css" />
+  <script src="../assets/js/lib/ai-config.js?v=20260613"></script>
+  <script src="../config.js?v=20260610"></script>
+  <script src="../assets/js/vendor/xlsx.full.min.js"></script>
+  <script src="../assets/js/vendor/jszip.min.js"></script>
+  <link rel="stylesheet" href="../assets/styles/recording-renamer.css" />
+</head>
+
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="header-left">
+        <a class="brand-mark" href="../index.html" aria-label="Go to home"><img src="../assets/images/AN Dark.png" data-light-logo="../assets/images/AN.png" data-dark-logo="../assets/images/AN Dark.png" alt="AutoNage"></a>
+        <div>
+          <h1>Recording Renamer</h1>
+          <div class="header-sub">Processed Pre-Sales Sync export · Download & rename recordings</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="navContainer"></div>
+<script>loadNavSafe("navContainer");</script>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="icon-moon" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+          <svg class="icon-sun" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="workflow-panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Inputs</div>
+          <div class="section-title">Load processed data</div>
+        </div>
+        <div class="section-note">The processed file must contain Phone, Call_Date, and Recordings. Each recording URL
+          is fetched, renamed, and packed into one ZIP.</div>
+      </div>
+
+      <div class="upload-grid">
+        <label class="drop-zone" id="dataZone" for="dataInput">
+          <div class="dz-icon" aria-hidden="true">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div class="dz-label">Processed CSV/XLSX</div>
+          <div class="dz-sublabel">Upload the output file from Pre-Sales Sync.</div>
+          <div class="dz-cols">Phone | Call_Date | Recordings</div>
+          <div class="dz-status" id="dataStatus">Click to browse or drop file</div>
+          <input type="file" id="dataInput" accept=".csv,.xlsx,.xls,.tsv">
+        </label>
+      </div>
+
+      <!-- Control bar (dashboard-style) -->
+      <div class="upload-controls">
+        <button class="btn btn-primary" id="btnProcess" disabled onclick="processBatch()">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+          Process
+        </button>
+        <button class="btn btn-success" id="btnDownload" disabled onclick="downloadZip()">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+          </svg>
+          Download ZIP
+        </button>
+
+        <div class="control-group">
+          <span class="mode-label">Proxy</span>
+          <button class="btn btn-secondary" id="btnProxyToggle" onclick="toggleProxyMode()" style="border:none;background:transparent;min-height:auto;padding:0.2rem 0.4rem;font-size:0.72rem;font-weight:600;">
+            <span id="proxyStatusLabel">Off</span>
+          </button>
+        </div>
+
+        <div class="control-group">
+          <span class="mode-label">Date</span>
+          <select class="mode-select" id="dateFormatSelect" onchange="handleDateFormatChange()" style="min-width:120px;padding:0.35rem 0.55rem;font-size:0.72rem;">
+            <option value="auto">Auto Detect</option>
+            <option value="DMY">DD/MM/YYYY</option>
+            <option value="MDY">MM/DD/YYYY</option>
+          </select>
+          <span class="control-status" id="dateParserNote">Format: —</span>
+        </div>
+
+        <button class="btn btn-secondary" id="btnReport" disabled onclick="downloadReport()">Download Report</button>
+        <button class="btn btn-danger" onclick="resetAll()">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Reset
+        </button>
+      </div>
+
+      <!-- Status bar (dashboard-style) -->
+      <div class="status-bar" id="statusBar">
+        <span class="status-dot"></span>
+        <span class="status-msg" id="statusMsg">Ready to process</span>
+      </div>
+    </section>
+
+    <section class="results-panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Output</div>
+          <div class="section-title">Review downloads</div>
+        </div>
+        <div class="section-note">Renamed files use the format <span class="mono">9035937158_2May.mp3</span>.</div>
+      </div>
+
+      <div class="empty-state" id="emptyState">Waiting for inputs.</div>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-label">Rows Read</div>
+          <div class="stat-val blue" id="sRows">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Recording URLs</div>
+          <div class="stat-val blue" id="sAudio">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Ready</div>
+          <div class="stat-val green" id="sMatched">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Missing</div>
+          <div class="stat-val amber" id="sMissing">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Skipped</div>
+          <div class="stat-val red" id="sSkipped">0</div>
+        </div>
+      </div>
+
+      <div class="table-wrapper" id="tableWrapper">
+        <div class="table-header">
+          <div class="table-title">Match Preview</div>
+          <div class="table-caption" id="tableCaption">0 rows</div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Row</th>
+                <th>Phone</th>
+                <th>Call Date</th>
+                <th>Source URL</th>
+                <th>Output File</th>
+                <th>Attempts</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>AutoNage - Recording Renamer - Lead Operations Automation</footer>
+
+  <script>
+    const OUTPUT_HEADERS = [
+      'Lead_ID', 'Full_Name', 'Phone', 'City', 'Pincode', 'Language', 'Lead_Source', 'Cohort',
+      'Campaign_ID', 'Call Triggered', 'Outcome', 'Disposition', 'SUMMARY', 'Updated SUMMARY',
+      'Conversion', 'Call_Date', 'Number of attempts', 'SENTIMENT', 'Recordings', 'Model',
+      'Seating', 'Exclusion_Flag'
+    ];
+
+    const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const RECORDING_FETCH_TIMEOUT_MS = 45000;
+    const RECORDING_FETCH_RETRIES = 2;
+
+    let dataFile = null;
+    let parsedRows = [];
+    let resultRows = [];
+    let matchedRows = [];
+    let reportCsv = '';
+    let useCorsProxy = false;
+    let dateParseOrder = 'DMY';   // 'DMY' = DD/MM/YYYY, 'MDY' = MM/DD/YYYY
+
+    function getCorsProxyUrl() {
+      if (window.JEJO_CONFIG && window.JEJO_CONFIG.corsProxyUrl) {
+        var url = window.JEJO_CONFIG.corsProxyUrl.trim();
+        if (url) return url;
+      }
+      return '';
+    }
+
+    function toggleProxyMode() {
+      useCorsProxy = !useCorsProxy;
+      var label = document.getElementById('proxyStatusLabel');
+      var btn = document.getElementById('btnProxyToggle');
+      if (useCorsProxy) {
+        label.textContent = 'On';
+        btn.style.border = '1px solid var(--success)';
+        btn.style.color = 'var(--success)';
+        setStatus('Proxy mode ON — recording URLs will be fetched via CORS proxy.', 'ok');
+      } else {
+        label.textContent = 'Off';
+        btn.style.border = 'none';
+        btn.style.color = '';
+        setStatus('Proxy mode OFF — recording URLs fetched directly.', '');
+      }
+    }
+
+    function syncProxyToggle() {
+      var proxyUrl = getCorsProxyUrl();
+      var btn = document.getElementById('btnProxyToggle');
+      var label = document.getElementById('proxyStatusLabel');
+      if (btn && label) {
+        if (proxyUrl) {
+          btn.style.display = '';
+          useCorsProxy = true;
+          label.textContent = 'On';
+          btn.style.border = '1px solid var(--success)';
+          btn.style.color = 'var(--success)';
+          btn.title = 'CORS proxy: ' + proxyUrl;
+        } else {
+          btn.style.display = 'none';
+        }
+      }
+    }
+
+    function normalizeHeader(value) {
+      return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+    }
+
+    function normalizePhone(raw) {
+      if (raw === undefined || raw === null || raw === '') return '';
+      let s = String(raw).trim();
+      if (/^\d[\d.]*e[+\-]?\d+$/i.test(s)) {
+        s = String(Math.round(parseFloat(s)));
+      }
+      const digits = s.replace(/\D/g, '');
+      if (!digits) return '';
+      if (digits.length === 10) return digits;
+      if (digits.startsWith('91') && digits.length === 12) return digits.slice(2);
+      if (digits.startsWith('0') && digits.length === 11) return digits.slice(1);
+      if (digits.startsWith('91') && digits.length > 12) return digits.slice(-10);
+      return '';
+    }
+
+    function cellToString(value) {
+      if (value === undefined || value === null || value === '') return '';
+      if (value instanceof Date) return value.toISOString();
+      if (typeof value === 'number') {
+        if (Number.isInteger(value)) return String(value);
+        if (value > 999999 && Math.abs(value - Math.round(value)) < 0.01) return String(Math.round(value));
+      }
+      return String(value).trim();
+    }
+
+    function parseExcelSerial(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num < 20000 || num > 70000) return null;
+      const epoch = Date.UTC(1899, 11, 30);
+      return new Date(epoch + num * 86400000);
+    }
+
+    function buildValidatedDate(year, month, day, hour = 0, minute = 0, second = 0) {
+      const date = new Date(year, month - 1, day, hour, minute, second);
+      if (
+        date.getFullYear() !== year ||
+        date.getMonth() + 1 !== month ||
+        date.getDate() !== day ||
+        date.getHours() !== hour ||
+        date.getMinutes() !== minute ||
+        date.getSeconds() !== second
+      ) {
+        return null;
+      }
+      return date;
+    }
+
+    function parseDate(value) {
+      if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+      if (value === undefined || value === null || value === '') return null;
+      if (typeof value === 'number') return parseExcelSerial(value);
+
+      const raw = String(value).trim();
+      if (!raw) return null;
+
+      const serial = parseExcelSerial(raw);
+      if (serial) return serial;
+
+      const dmy = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?)?/i);
+      if (dmy) {
+        const first = parseInt(dmy[1], 10);
+        const secondPart = parseInt(dmy[2], 10);
+        let year = parseInt(dmy[3], 10);
+        let hour = parseInt(dmy[4] || '0', 10);
+        const minute = parseInt(dmy[5] || '0', 10);
+        const second = parseInt(dmy[6] || '0', 10);
+        const ampm = String(dmy[7] || '').toLowerCase();
+        if (year < 100) year += 2000;
+        if (ampm === 'pm' && hour !== 12) hour += 12;
+        if (ampm === 'am' && hour === 12) hour = 0;
+
+        // Use the user-selected date format (DMY = DD/MM/YYYY, MDY = MM/DD/YYYY)
+        if (dateParseOrder === 'MDY') {
+          // Parse as MM/DD/YYYY
+          const mdy = buildValidatedDate(year, first, secondPart, hour, minute, second);
+          if (mdy) return mdy;
+          // Fallback: try DD/MM if MM/DD is impossible
+          if (secondPart > 12) return null;
+          return buildValidatedDate(year, secondPart, first, hour, minute, second);
+        }
+        // Default: DMY — parse as DD/MM/YYYY
+        const ddmmyyyy = buildValidatedDate(year, secondPart, first, hour, minute, second);
+        if (ddmmyyyy) return ddmmyyyy;
+        // Fallback: try MM/DD only when DD/MM is impossible
+        if (first > 12) return null;
+        const mmddyyyy = buildValidatedDate(year, first, secondPart, hour, minute, second);
+        if (mmddyyyy) {
+          return mmddyyyy;
+        }
+      }
+
+      const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+      if (iso) {
+        const year = parseInt(iso[1], 10);
+        const month = parseInt(iso[2], 10);
+        const day = parseInt(iso[3], 10);
+        const hour = parseInt(iso[4] || '0', 10);
+        const minute = parseInt(iso[5] || '0', 10);
+        const second = parseInt(iso[6] || '0', 10);
+        return buildValidatedDate(year, month, day, hour, minute, second);
+      }
+
+      return null;
+    }
+
+    function formatDateToken(date) {
+      if (!date) return '';
+      return `${date.getDate()}${MONTH_SHORT[date.getMonth()]}`;
+    }
+
+    function formatDateDisplay(date) {
+      if (!date) return '';
+      const dd = String(date.getDate()).padStart(2, '0');
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}/${date.getFullYear()}`;
+    }
+
+    function getExtension(name) {
+      const clean = String(name || '').split(/[?#]/)[0];
+      const match = clean.match(/\.([a-z0-9]{2,5})$/i);
+      return match ? match[1].toLowerCase() : '';
+    }
+
+    function getRowValue(row, names) {
+      for (const name of names) {
+        const key = normalizeHeader(name);
+        if (row.values[key] !== undefined && row.values[key] !== '') return row.values[key];
+      }
+      return '';
+    }
+
+    function readFileAsArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = event => resolve(event.target.result);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    async function parseDataFile(file) {
+      const ab = await readFileAsArrayBuffer(file);
+      const wb = XLSX.read(ab, { type: 'array', raw: true, cellText: false, cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+      if (!rows.length) return [];
+
+      const first = rows[0].map(cellToString);
+      const firstNormalized = new Set(first.map(normalizeHeader));
+      const hasHeader = firstNormalized.has('phone') &&
+        (firstNormalized.has('calldate') || firstNormalized.has('recordings') || firstNormalized.has('leadid'));
+
+      const headers = hasHeader ? first : OUTPUT_HEADERS;
+      const startIndex = hasHeader ? 1 : 0;
+      const parsed = [];
+
+      for (let i = startIndex; i < rows.length; i++) {
+        const raw = rows[i];
+        if (!raw || raw.every(cell => String(cellToString(cell)).trim() === '')) continue;
+        const values = {};
+        for (let j = 0; j < headers.length; j++) {
+          const key = normalizeHeader(headers[j] || OUTPUT_HEADERS[j] || `column_${j + 1}`);
+          const cellRef = XLSX.utils.encode_cell({ r: i, c: j });
+          const cell = ws[cellRef];
+          values[key] = cell && cell.l && cell.l.Target ? cell.l.Target : cellToString(raw[j]);
+        }
+        parsed.push({ rowNumber: i + 1, values, raw: raw.map(cellToString) });
+      }
+
+      return parsed;
+    }
+
+    function uniqueOutputName(baseName, extension, usedOutputNames) {
+      const ext = extension ? `.${extension}` : '';
+      let name = `${baseName}${ext}`;
+      let counter = 2;
+      while (usedOutputNames.has(name.toLowerCase())) {
+        name = `${baseName}_${counter}${ext}`;
+        counter += 1;
+      }
+      usedOutputNames.add(name.toLowerCase());
+      return name;
+    }
+
+    function buildResults(rows) {
+      const usedOutputNames = new Set();
+      const results = [];
+      const matches = [];
+
+      for (const row of rows) {
+        const phone = normalizePhone(getRowValue(row, ['Phone', 'phone_number', 'Mobile', 'Contact Number']));
+        const dateRaw = getRowValue(row, ['Call_Date', 'Call Date', 'Date', 'Updated']);
+        const date = parseDate(dateRaw);
+        const recordingRef = String(getRowValue(row, [
+          'Recordings', 'Recording', 'Recording URL', 'Call Recording', 'call_recording', 'call_url', 'audio_url'
+        ]) || '').trim();
+
+        if (!phone) {
+          results.push({
+            status: 'Skipped',
+            tone: 'err',
+            rowNumber: row.rowNumber,
+            phone: '',
+            callDate: '',
+            sourceFile: '',
+            outputFile: '',
+            attempts: '',
+            recordingRef,
+            reason: 'Missing or invalid phone'
+          });
+          continue;
+        }
+
+        if (!date) {
+          results.push({
+            status: 'Skipped',
+            tone: 'err',
+            rowNumber: row.rowNumber,
+            phone,
+            callDate: String(dateRaw || ''),
+            sourceFile: '',
+            outputFile: '',
+            attempts: '',
+            recordingRef,
+            reason: 'Missing or invalid Call_Date'
+          });
+          continue;
+        }
+
+        if (!recordingRef) {
+          results.push({
+            status: 'Missing',
+            tone: 'warn',
+            rowNumber: row.rowNumber,
+            phone,
+            callDate: formatDateDisplay(date),
+            sourceFile: '',
+            outputFile: '',
+            attempts: '',
+            recordingRef,
+            reason: 'Missing Recordings URL'
+          });
+          continue;
+        }
+
+        if (!/^https?:\/\//i.test(recordingRef)) {
+          results.push({
+            status: 'Skipped',
+            tone: 'err',
+            rowNumber: row.rowNumber,
+            phone,
+            callDate: formatDateDisplay(date),
+            sourceFile: recordingRef,
+            outputFile: '',
+            attempts: '',
+            recordingRef,
+            reason: 'Recording value is not an HTTP URL'
+          });
+          continue;
+        }
+
+        const ext = getExtension(recordingRef) || 'mp3';
+        const outputFile = uniqueOutputName(`${phone}_${formatDateToken(date)}`, ext, usedOutputNames);
+
+        const result = {
+          status: 'Ready',
+          tone: 'ok',
+          rowNumber: row.rowNumber,
+          phone,
+          callDate: formatDateDisplay(date),
+          sourceFile: recordingRef,
+          outputFile,
+          attempts: '',
+          recordingRef,
+          reason: 'Ready to download from Recordings URL'
+        };
+        results.push(result);
+        result.callDateObj = date; matches.push({ ...result, url: recordingRef, callDateObj: date });
+      }
+
+      return {
+        results,
+        matches,
+        urlCount: results.filter(row => row.recordingRef && /^https?:\/\//i.test(row.recordingRef)).length
+      };
+    }
+
+    function csvEscape(value) {
+      const s = String(value ?? '');
+      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+
+    function makeReportCsv(results) {
+      const header = ['Status', 'Row', 'Phone', 'Call_Date', 'Recording_URL', 'Source_URL', 'Output_File', 'Attempts', 'Reason'];
+      const lines = [header.map(csvEscape).join(',')];
+      for (const row of results) {
+        lines.push([
+          row.status,
+          row.rowNumber,
+          row.phone,
+          row.callDate,
+          row.recordingRef,
+          row.sourceFile,
+          row.outputFile,
+          row.attempts,
+          row.reason
+        ].map(csvEscape).join(','));
+      }
+      return lines.join('\r\n');
+    }
+
+    async function processBatch() {
+      if (!dataFile) return;
+      setStatus('Reading processed file...', '');
+      setBusy(true);
+
+      try {
+        if (!window.XLSX) throw new Error('XLSX library did not load.');
+        if (!window.JSZip) throw new Error('JSZip library did not load.');
+
+        parsedRows = await parseDataFile(dataFile);
+        applyDateFormat();
+        const built = buildResults(parsedRows);
+        resultRows = built.results;
+        matchedRows = built.matches;
+        reportCsv = makeReportCsv(resultRows);
+
+        renderResults(resultRows, built.urlCount);
+        document.getElementById('btnDownload').disabled = matchedRows.length === 0;
+        document.getElementById('btnReport').disabled = resultRows.length === 0;
+
+        const missing = resultRows.filter(row => row.status === 'Missing').length;
+        const skipped = resultRows.filter(row => row.status === 'Skipped').length;
+        const tone = missing || skipped ? 'warn' : 'ok';
+        setStatus(`${matchedRows.length} recording URL(s) ready. ${missing} missing, ${skipped} skipped.`, tone);
+      } catch (error) {
+        console.error(error);
+        setStatus(`Error: ${error.message}`, 'err');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function isAllowedRecordingUrl(url) {
+      if (!url || typeof url !== 'string') return false;
+      try {
+        var parsed = new URL(url);
+        if (parsed.protocol !== 'https:') return false;
+        // Block private/internal IPs to prevent SSRF
+        var host = parsed.hostname;
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1' ||
+            host === '0.0.0.0' || host.startsWith('10.') || host.startsWith('192.168.') ||
+            host.startsWith('172.') || host.endsWith('.local') || host.endsWith('.internal')) {
+          return false;
+        }
+        return true;
+      } catch (e) { return false; }
+    }
+
+    function buildFetchUrl(originalUrl) {
+      if (useCorsProxy) {
+        var proxyUrl = getCorsProxyUrl();
+        if (proxyUrl) {
+          if (!isAllowedRecordingUrl(originalUrl)) {
+            console.warn('Blocked recording URL (SSRF prevention):', originalUrl);
+            return null;
+          }
+          return proxyUrl + '?url=' + encodeURIComponent(originalUrl);
+        }
+        // Proxy mode on but no URL configured — toggle off silently
+        useCorsProxy = false;
+        var pl = document.getElementById('proxyStatusLabel');
+        if (pl) pl.textContent = 'Off';
+      }
+      return originalUrl;
+    }
+
+    async function fetchRecordingWithRetry(row, onAttempt) {
+      const maxAttempts = RECORDING_FETCH_RETRIES + 1;
+      let lastError = null;
+      let lastTimedOut = false;
+      var fetchUrl = buildFetchUrl(row.url);
+      if (!fetchUrl) return { ok: false, error: 'URL blocked by security policy' };
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (onAttempt) onAttempt(attempt, maxAttempts);
+
+        const controller = new AbortController();
+        let timedOut = false;
+        const timeoutId = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, RECORDING_FETCH_TIMEOUT_MS);
+
+        try {
+          const response = await fetch(fetchUrl, { signal: controller.signal });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+          const blob = await response.blob();
+          return {
+            blob,
+            attempts: attempt,
+            contentType: response.headers.get('content-type'),
+          };
+        } catch (error) {
+          lastError = error;
+          lastTimedOut = timedOut || error?.name === 'AbortError';
+          if (attempt < maxAttempts) await wait(500 * attempt);
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+
+      const message = getDownloadFailureMessage(lastError, lastTimedOut);
+      const wrapped = new Error(`${message} (${maxAttempts} attempts)`);
+      wrapped.attempts = maxAttempts;
+      throw wrapped;
+    }
+
+    async function downloadZip() {
+      if (!matchedRows.length) return;
+      setStatus('Downloading recordings from URLs...', '');
+      setBusy(true);
+
+      try {
+        const zip = new JSZip();
+        const folder = zip.folder('renamed_recordings');
+        let downloaded = 0;
+        let failed = 0;
+
+        for (let i = 0; i < matchedRows.length; i++) {
+          const row = matchedRows[i];
+
+          try {
+            const fetched = await fetchRecordingWithRetry(row, (attempt, maxAttempts) => {
+              const retryText = maxAttempts > 1 ? ` attempt ${attempt}/${maxAttempts}` : '';
+              setStatus(`Downloading ${i + 1}/${matchedRows.length}${retryText}: ${row.outputFile}`, '');
+            });
+            const detectedExt = extensionFromContentType(fetched.contentType);
+            const outputFile = detectedExt && getExtension(row.outputFile) === 'mp3'
+              ? replaceExtension(row.outputFile, detectedExt)
+              : row.outputFile;
+
+            folder.file(outputFile, fetched.blob);
+            downloaded += 1;
+            updateResultStatus(
+              row,
+              'Downloaded',
+              'ok',
+              outputFile,
+              fetched.attempts > 1 ? `Downloaded after ${fetched.attempts} attempts` : 'Downloaded from Recordings URL',
+              fetched.attempts
+            );
+          } catch (error) {
+            failed += 1;
+            updateResultStatus(row, 'Failed', 'err', row.outputFile,
+              error.message || 'Download failed', error.attempts || '');
+          }
+        }
+
+        reportCsv = makeReportCsv(resultRows);
+
+        if (!downloaded) {
+          renderResults(resultRows, getUrlCount(resultRows));
+          setStatus('No recordings could be downloaded. Check the report for failed URLs.', 'err');
+          return;
+        }
+
+        zip.file('recording_rename_report.csv', reportCsv);
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const dateToken = getZipDateToken();
+        triggerDownload(blob, `AutoNage_Recordings_${dateToken}.zip`);
+        renderResults(resultRows, getUrlCount(resultRows));
+        setStatus(`ZIP downloaded with ${downloaded} recording(s). ${failed} failed.`, failed ? 'warn' : 'ok');
+      } catch (error) {
+        console.error(error);
+        setStatus(`Error: ${error.message}`, 'err');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function getDownloadFailureMessage(error, timedOut) {
+      if (timedOut || error?.name === 'AbortError') {
+        return `Download timed out after ${Math.round(RECORDING_FETCH_TIMEOUT_MS / 1000)} seconds`;
+      }
+
+      if (error instanceof TypeError || /failed to fetch|network/i.test(String(error?.message || ''))) {
+        var proxyHint = useCorsProxy
+          ? 'CORS proxy enabled but still failed — check that your proxy server is reachable.'
+          : 'Toggle the CORS proxy button above, then retry. Or use a server/proxy download route or a browser extension that permits CORS.';
+        return 'Download failed: the browser could not fetch this cross-origin recording URL. ' + proxyHint;
+      }
+
+      return `Download failed: ${error?.message || 'unknown error'}`;
+    }
+
+    function extensionFromContentType(contentType) {
+      const type = String(contentType || '').toLowerCase();
+      if (type.includes('audio/mpeg') || type.includes('audio/mp3')) return 'mp3';
+      if (type.includes('audio/wav') || type.includes('audio/x-wav')) return 'wav';
+      if (type.includes('audio/mp4') || type.includes('audio/aac')) return 'm4a';
+      if (type.includes('audio/ogg')) return 'ogg';
+      if (type.includes('audio/webm')) return 'webm';
+      if (type.includes('audio/flac')) return 'flac';
+      if (type.includes('video/mp4')) return 'mp4';
+      return '';
+    }
+
+    function replaceExtension(filename, extension) {
+      return String(filename || '').replace(/\.[a-z0-9]{2,5}$/i, `.${extension}`);
+    }
+
+    function updateResultStatus(matchRow, status, tone, outputFile, reason, attempts = '') {
+      const result = resultRows.find(row => row.rowNumber === matchRow.rowNumber && row.recordingRef === matchRow.recordingRef);
+      if (!result) return;
+      result.status = status;
+      result.tone = tone;
+      result.outputFile = outputFile;
+      result.attempts = attempts;
+      result.reason = reason;
+    }
+
+    function downloadReport() {
+      if (!resultRows.length) return;
+      const blob = new Blob([reportCsv || makeReportCsv(resultRows)], { type: 'text/csv;charset=utf-8' });
+      triggerDownload(blob, `AutoNage_Recording_Rename_Report_${getZipDateToken()}.csv`);
+    }
+
+    function getZipDateToken() {
+      const matchedDates = matchedRows.map(row => row.callDateObj || parseDate(row.callDate)).filter(Boolean);
+      const unique = new Set(matchedDates.map(formatDateToken));
+      if (unique.size === 1) return Array.from(unique)[0];
+      const now = new Date();
+      return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function getUrlCount(rows) {
+      return rows.filter(row => row.recordingRef && /^https?:\/\//i.test(row.recordingRef)).length;
+    }
+
+    function renderResults(rows, urlCount) {
+      const matched = rows.filter(row => row.status === 'Ready' || row.status === 'Downloaded').length;
+      const missing = rows.filter(row => row.status === 'Missing').length;
+      const skipped = rows.filter(row => row.status === 'Skipped' || row.status === 'Failed').length;
+
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('statsGrid').style.display = 'grid';
+      document.getElementById('tableWrapper').style.display = 'block';
+      document.getElementById('sRows').textContent = parsedRows.length;
+      document.getElementById('sAudio').textContent = urlCount;
+      document.getElementById('sMatched').textContent = matched;
+      document.getElementById('sMissing').textContent = missing;
+      document.getElementById('sSkipped').textContent = skipped;
+      document.getElementById('tableCaption').textContent = `${rows.length} row(s)`;
+
+      const body = document.getElementById('resultBody');
+      body.innerHTML = '';
+      for (const row of rows.slice(0, 300)) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="badge ${row.tone}">${esc(row.status)}</span></td>
+          <td class="mono">${esc(row.rowNumber)}</td>
+          <td class="mono">${esc(row.phone)}</td>
+          <td>${esc(row.callDate)}</td>
+          <td class="truncate" title="${esc(row.sourceFile)}">${esc(row.sourceFile)}</td>
+          <td class="mono truncate" title="${esc(row.outputFile)}">${esc(row.outputFile)}</td>
+          <td class="mono">${esc(row.attempts)}</td>
+          <td>${esc(row.reason)}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    function updateProcessButton() {
+      document.getElementById('btnProcess').disabled = !dataFile;
+      document.getElementById('btnDownload').disabled = true;
+      document.getElementById('btnReport').disabled = true;
+    }
+
+    function resetAll() {
+      dataFile = null;
+      parsedRows = [];
+      resultRows = [];
+      matchedRows = [];
+      reportCsv = '';
+      document.getElementById('dataInput').value = '';
+      document.getElementById('dataZone').classList.remove('has-file');
+      document.getElementById('dataStatus').className = 'dz-status';
+      document.getElementById('dataStatus').textContent = 'Click to browse or drop file';
+      document.getElementById('emptyState').style.display = 'block';
+      document.getElementById('emptyState').textContent = 'Waiting for inputs.';
+      document.getElementById('statsGrid').style.display = 'none';
+      document.getElementById('tableWrapper').style.display = 'none';
+      document.getElementById('resultBody').innerHTML = '';
+      setStatus('', '');
+      updateProcessButton();
+    }
+
+    function setBusy(isBusy) {
+      document.getElementById('btnProcess').disabled = isBusy || !dataFile;
+      document.getElementById('btnDownload').disabled = isBusy || matchedRows.length === 0;
+      document.getElementById('btnReport').disabled = isBusy || resultRows.length === 0;
+    }
+
+    function setStatus(message, type) {
+      const el = document.getElementById('statusMsg');
+      const bar = document.getElementById('statusBar');
+      el.textContent = message;
+      if (type) {
+        bar.className = 'status-bar ' + type;
+      } else {
+        bar.className = 'status-bar';
+      }
+    }
+
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[c]));
+    }
+
+    function setupDropZone(zoneId, inputId, onFiles) {
+      const zone = document.getElementById(zoneId);
+      const input = document.getElementById(inputId);
+
+      input.addEventListener('change', function () {
+        onFiles(Array.from(this.files || []));
+      });
+
+      zone.addEventListener('dragover', event => {
+        event.preventDefault();
+        zone.classList.add('drag-over');
+      });
+
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+
+      zone.addEventListener('drop', event => {
+        event.preventDefault();
+        zone.classList.remove('drag-over');
+        const files = Array.from(event.dataTransfer.files || []);
+        if (files.length) onFiles(files);
+      });
+    }
+
+    setupDropZone('dataZone', 'dataInput', files => {
+      const file = files[0];
+      if (!file) return;
+      if (!validateFileSize(file)) return;
+      dataFile = file;
+      document.getElementById('dataZone').classList.add('has-file');
+      document.getElementById('dataStatus').className = 'dz-status ok';
+      document.getElementById('dataStatus').textContent = `Loaded: ${file.name}`;
+      setStatus('Ready — upload a processed file to begin', '');
+      updateProcessButton();
+    });
+
+    function syncBrandLogo(theme) {
+      document.querySelectorAll('.brand-mark img').forEach(img => {
+        img.src = theme === 'dark' ? img.dataset.darkLogo : img.dataset.lightLogo;
+      });
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('jejo-theme', theme);
+      syncBrandLogo(theme);
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
+    applyTheme(localStorage.getItem('jejo-theme') || 'dark');
+    function detectDateFormat(dateStrings) {
+      var sampleLimit = Math.min(dateStrings.length, 250);
+      for (var i = 0; i < sampleLimit; i++) {
+        var s = String(dateStrings[i] || '').trim();
+        var m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+        if (!m) continue;
+        var a = parseInt(m[1], 10);
+        var b = parseInt(m[2], 10);
+        if (a > 12 && b <= 12) return 'DMY';
+        if (b > 12 && a <= 12) return 'MDY';
+      }
+      return 'DMY'; // default
+    }
+
+    function updateDateParserNote() {
+      var sel = document.getElementById('dateFormatSelect');
+      var note = document.getElementById('dateParserNote');
+      if (!sel || !note) return;
+      var mode = sel.value === 'auto' ? 'Auto' : 'Manual';
+      var label = dateParseOrder === 'MDY' ? 'MM/DD/YYYY' : 'DD/MM/YYYY';
+      note.textContent = 'Format: ' + label + ' (' + mode + ')';
+    }
+
+    function applyDateFormat() {
+      var sel = document.getElementById('dateFormatSelect');
+      if (!sel) return;
+      if (sel.value === 'auto') {
+        var dates = parsedRows.map(function(r) {
+          return getRowValue(r, ['Call_Date', 'Call Date', 'Date', 'Updated']);
+        });
+        dateParseOrder = detectDateFormat(dates);
+        sel.dataset.detected = dateParseOrder;
+      } else {
+        dateParseOrder = sel.value;
+        delete sel.dataset.detected;
+      }
+      updateDateParserNote();
+    }
+
+    function handleDateFormatChange() {
+      applyDateFormat();
+      if (parsedRows.length) {
+        processBatch();
+      }
+    }
+
+    syncProxyToggle();
+  </script>
+</body>
+
+</html>

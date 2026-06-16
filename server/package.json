@@ -1,0 +1,15 @@
+{
+  "name": "autonage-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local CORS proxy for AutoNage NVIDIA API requests",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js",
+    "dev": "node --watch proxy.js"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://autobot-webapp-dev.gryd.in http://localhost:3456; form-action 'self'; base-uri 'self'; object-src 'none'; " /> 
+  <script>
+    (function () {
+      var theme = localStorage.getItem('jejo-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <script>
+    (function() {
+      function requireAuth() {
+        var token = sessionStorage.getItem('gryd_token');
+        var expiry = sessionStorage.getItem('gryd_expiry');
+        if (!token || !expiry || parseInt(expiry) <= Math.floor(Date.now() / 1000)) {
+          window.location.replace('../login.html');
+          return false;
+        }
+        return true;
+      }
+      requireAuth();
+      window.addEventListener('pageshow', function() { requireAuth(); });
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') requireAuth();
+      });
+      window.addEventListener('unload', function() {});
+    })();
+  </script>
+  <title>Campaign Objective Generator - AutoNage</title>
+  <meta name="description" content="Generate structured 20-field campaign objectives for voice AI and WhatsApp campaigns." />
+  <link rel="stylesheet" href="../assets/fonts/fonts.css" />
+  <link rel="stylesheet" href="../assets/styles/campaign-generator.css" />
+  <script src="../assets/js/lib/ai-config.js?v=20260613"></script>
+  <script src="../assets/js/lib/theme.js"></script>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="header-left">
+        <a class="brand-mark" href="../index.html" aria-label="Go to home"><img src="../assets/images/AN Dark.png" data-light-logo="../assets/images/AN.png" data-dark-logo="../assets/images/AN Dark.png" alt="AutoNage"></a>
+        <div class="header-title-group">
+          <h1>Campaign Objective Generator</h1>
+          <div class="header-sub">20-field structured campaign JSONs for voice AI &amp; WhatsApp</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="navContainer"></div>
+        <script>loadNavSafe("navContainer");</script>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="icon-moon" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+          <svg class="icon-sun" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Step 1: Campaign Family -->
+    <section class="panel" id="familyPanel">
+      <div class="section-title">Campaign Family</div>
+      <div class="step-note">Select the campaign type to configure the form fields and output mapping.</div>
+      <div class="family-tabs" id="familyTabs"></div>
+      <div class="sub-type-row">
+        <label>Sub-type</label>
+        <select class="sub-type-select" id="subTypeSelect"></select>
+      </div>
+    </section>
+
+    <!-- Step 2: Basic Info -->
+    <section class="panel" id="basicPanel">
+      <div class="section-title">Basic Information</div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Campaign Objective Name</label>
+          <input type="text" id="campaign_objective_name" oninput="onFormChange()" placeholder="e.g. Toyota Hyryder TDB Outbound - Malayalam" />
+        </div>
+        <div class="form-group">
+          <label>Dealership ID</label>
+          <input type="text" id="dealership_id" oninput="onFormChange()" placeholder="e.g. DL-001" />
+        </div>
+        <div class="form-group">
+          <label>Dealer Name</label>
+          <input type="text" id="dealer_name" oninput="onFormChange()" placeholder="e.g. Fortune Toyota" />
+        </div>
+        <div class="form-group">
+          <label>Brand ID</label>
+          <input type="text" id="brand_id" oninput="onFormChange()" placeholder="e.g. TKM" />
+        </div>
+        <div class="form-group">
+          <label>Brand Name</label>
+          <input type="text" id="brand_name" oninput="onFormChange()" placeholder="e.g. Toyota Kirloskar Motor" />
+        </div>
+      </div>
+      <div class="field-group" id="extraFieldsContainer">
+        <div class="field-group-title">Campaign-Specific Fields</div>
+        <div class="form-grid" id="extraFieldsGrid"></div>
+      </div>
+    </section>
+
+    <!-- Step 3: Campaign Context -->
+    <section class="panel" id="contextPanel">
+      <div class="section-title">Who &amp; Why</div>
+      <div class="section-sub">Define the agent identity, target customer, and value proposition.</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Who Are You</label>
+          <div class="field-hint">Agent identity statement</div>
+          <input type="text" id="who_are_you" oninput="onFormChange()" placeholder="e.g. AutoNage voice assistant" />
+        </div>
+        <div class="form-group">
+          <label>Who You Represent</label>
+          <div class="field-hint">Dealership / brand</div>
+          <input type="text" id="who_you_represent" oninput="onFormChange()" placeholder="e.g. Fortune Toyota" />
+        </div>
+        <div class="form-group full">
+          <label>Who Is The Customer</label>
+          <div class="field-hint">Lead data fields and customer profile</div>
+          <textarea id="who_is_the_customer" oninput="onFormChange()" placeholder="e.g. Existing Toyota customer who has shown interest in Urban Cruiser Hyryder. Lead fields: name, phone, vehicle_model, preferred_date."></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Why User Should Avail This</label>
+          <div class="field-hint">Value proposition and benefits</div>
+          <textarea id="why_user_should_avail_this" oninput="onFormChange()" placeholder="e.g. Experience the Urban Cruiser Hyryder Hybrid — great fuel efficiency, smooth drive, and exclusive launch offers."></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Reasons Users May Not Be Interested</label>
+          <div class="field-hint" id="reasonsLabel">Objection handling for voice AI</div>
+          <textarea id="reasons_users_may_not_be_interested" oninput="onFormChange()" placeholder="e.g. Not looking to buy right now, Already booked test drive elsewhere, Not interested in hybrid"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Reasons For Non-applicability</label>
+          <div class="field-hint" id="nonApplicabilityLabel">When the campaign does not apply</div>
+          <textarea id="reasons_for_non_applicability" oninput="onFormChange()" placeholder="e.g. Already purchased vehicle, Not in service area, Vehicle model not available"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4: Conversation Flow -->
+    <section class="panel" id="flowPanel">
+      <div class="section-title">Conversation Flow</div>
+      <div class="section-sub">Define the opening, tone, purpose, and step-by-step flow.</div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label id="openingLabel">Custom Conversation Start Pattern</label>
+          <div class="field-hint" id="openingHint">Opening line for the AI agent</div>
+          <textarea id="custom_conversation_start_pattern" oninput="onFormChange()" placeholder="e.g. Hello (customer_name), this is (agent_name) calling from (dealer_name). How are you doing today?"></textarea>
+        </div>
+        <div class="form-group">
+          <label id="toneLabel">Conversation Tone</label>
+          <div class="field-hint" id="toneHint">Agent speaking style</div>
+          <input type="text" id="conversation_tone" oninput="onFormChange()" placeholder="e.g. Friendly, professional, persuasive" />
+        </div>
+        <div class="form-group full">
+          <label>Purpose</label>
+          <div class="field-hint">Core purpose of the campaign</div>
+          <textarea id="purpose" oninput="onFormChange()" placeholder="e.g. Book a test drive for the Urban Cruiser Hyryder at the customer's preferred date and time."></textarea>
+        </div>
+        <div class="form-group full">
+          <label id="stepsLabel">Purpose Steps</label>
+          <div class="field-hint" id="stepsHint">Step-by-step flow (voice) or workflow stages</div>
+          <textarea id="purpose_steps" oninput="onFormChange()" placeholder="1. Greet and introduce\n2. Confirm customer identity\n3. State purpose of call\n4. Check interest in vehicle\n5. Suggest test drive slot\n6. Confirm booking\n7. Send confirmation\n8. Thank and close"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 5: Guardrails -->
+    <section class="panel" id="guardrailsPanel">
+      <div class="section-title">Guardrails &amp; Configuration</div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Guardrails &amp; Guidelines</label>
+          <div class="field-hint">Rules the AI must follow</div>
+          <textarea id="guardrails_guidelines" oninput="onFormChange()" placeholder="e.g. Do not share pricing unless asked. Do not make promises about discounts. Transfer to sales team if customer seems interested but wants more details."></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Other Important Information</label>
+          <div class="field-hint">Additional context, disclaimers, or notes</div>
+          <textarea id="other_important_information" oninput="onFormChange()" placeholder="e.g. Campaign runs Mon-Sat 10 AM to 6 PM. Target audience: existing leads from website enquiries in the last 30 days."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Campaign Objective Description</label>
+          <div class="field-hint">Brief description of the campaign</div>
+          <textarea id="campaign_objective_description" oninput="onFormChange()" placeholder="e.g. Outbound voice campaign to book test drives for Toyota Hyryder from web enquiries."></textarea>
+        </div>
+        <div class="form-group checkbox-row">
+          <input type="checkbox" id="is_custom" onchange="onFormChange()" />
+          <label style="text-transform:none;letter-spacing:0;font-size:0.82rem;color:var(--text);">Mark as custom campaign</label>
+        </div>
+        <div class="form-group full">
+          <label>Filter Params (JSON)</label>
+          <div class="field-hint">Optional campaign filter configuration</div>
+          <textarea id="filter_params" oninput="onFormChange()" placeholder='e.g. {"city": ["Chennai", "Bangalore"], "lead_source": ["website", "referral"]}'></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 6: Auto-generated Fields -->
+    <section class="panel" id="autoPanel">
+      <div class="section-title">Auto-generated Fields</div>
+      <div class="section-sub">These are computed automatically from your inputs. Edit source fields above to update.</div>
+      <div class="stats-bar">
+        <div class="stat-card">
+          <div class="stat-label">Fields Total</div>
+          <div class="stat-value" id="fieldCount">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Fields Filled</div>
+          <div class="stat-value" id="fieldFilled">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Completion</div>
+          <div class="stat-value" id="fieldPct">0%</div>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Campaign Objective ID</label>
+          <div class="field-hint">Auto-generated UUID v4</div>
+          <div class="auto-field" id="campaign_objective_id">—</div>
+        </div>
+        <div class="form-group">
+          <label>Campaign Type</label>
+          <div class="auto-field" id="campaign_type">—</div>
+        </div>
+        <div class="form-group">
+          <label>Campaign Sub-type</label>
+          <div class="auto-field" id="campaign_sub_type">—</div>
+        </div>
+        <div class="form-group full">
+          <label>Search Term</label>
+          <div class="field-hint">Auto-generated from campaign context for search indexing</div>
+          <div class="auto-field" id="search_term">—</div>
+        </div>
+        <div class="form-group full">
+          <label>Doc Data</label>
+          <div class="field-hint">Auto-generated metadata</div>
+          <div class="auto-field" id="doc_data">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 7: Preview & Export -->
+    <section class="panel" id="previewPanel">
+      <div class="section-title">Preview &amp; Export</div>
+      <div class="section-sub">Your campaign objective as a structured JSON. Copy or download it.</div>
+      <div class="controls">
+        <button class="btn btn-primary" id="downloadBtn" onclick="downloadJSON()" disabled>Download JSON</button>
+        <button class="btn btn-secondary" onclick="copyJSON()">Copy to Clipboard</button>
+        <button class="btn btn-secondary" onclick="clearForm()">Clear All</button>
+      </div>
+      <div class="json-preview" id="jsonPreview"><span class="json-null">null</span> — fill out the form above</div>
+      <div class="status" id="globalStatus"></div>
+    </section>
+  </main>
+
+  <footer>AutoNage - Campaign Objective Generator</footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    var CAMPAIGN_FAMILIES = {
+      presales_voice: {
+        id: 'presales_voice',
+        label: 'Test Drive Booking',
+        icon: '🚗',
+        description: 'Pre-sales voice AI outbound — book test drives',
+        subTypes: [
+          { id: 'tdb_outbound', label: 'TDB Outbound' },
+          { id: 'tdb_followup', label: 'TDB Follow-up' },
+          { id: 'lead_reengagement', label: 'Lead Re-engagement' }
+        ],
+        extraFields: [
+          { key: 'vehicle_model', label: 'Vehicle Model', hint: 'e.g. Urban Cruiser Hyryder' },
+          { key: 'variant', label: 'Variant', hint: 'e.g. Hybrid V MT' },
+          { key: 'preferred_contact_time', label: 'Preferred Contact Time', hint: 'e.g. 10 AM - 6 PM' }
+        ]
+      },
+      service_voice: {
+        id: 'service_voice',
+        label: 'Service Reminder',
+        icon: '🔧',
+        description: 'Post-sales voice AI outbound — service reminders',
+        subTypes: [
+          { id: 'service_due', label: 'Service Due Reminder' },
+          { id: 'service_overdue', label: 'Service Overdue Follow-up' },
+          { id: 'service_feedback', label: 'Post-Service Feedback' }
+        ],
+        extraFields: [
+          { key: 'vehicle_model', label: 'Vehicle Model', hint: 'e.g. XUV700' },
+          { key: 'service_type', label: 'Service Type', hint: 'e.g. Yearly / Paid / Free' },
+          { key: 'last_service_date', label: 'Last Service Date', hint: 'e.g. 2025-12-15' }
+        ]
+      },
+      whatsapp: {
+        id: 'whatsapp',
+        label: 'WhatsApp Template',
+        icon: '💬',
+        description: 'WhatsApp messaging campaign template',
+        subTypes: [
+          { id: 'wa_promotional', label: 'Promotional' },
+          { id: 'wa_service_reminder', label: 'Service Reminder' },
+          { id: 'wa_feedback', label: 'Feedback Request' }
+        ],
+        extraFields: [
+          { key: 'template_name', label: 'Template Name', hint: 'e.g. service_reminder_v1' },
+          { key: 'header_type', label: 'Header Type', hint: 'text / image / video / document' },
+          { key: 'footer_text', label: 'Footer Text', hint: 'e.g. Reply STOP to opt out' },
+          { key: 'button_text', label: 'Button Text', hint: 'e.g. Book Now | Learn More' }
+        ],
+        fieldOverrides: {
+          custom_conversation_start_pattern: { label: 'Message Body', hint: 'WhatsApp message content with {{placeholders}}' },
+          conversation_tone: { label: 'Language Style', hint: 'Formal / Informal / Friendly / Professional' },
+          purpose_steps: { label: 'Workflow Stages', hint: 'Branching logic and message flow stages' },
+          reasons_users_may_not_be_interested: { label: 'Branch Responses', hint: 'Expected user replies and system responses' },
+          reasons_for_non_applicability: { label: 'Opt-out Handling', hint: 'How opt-outs and STOP replies are managed' }
+        }
+      }
+    };
+
+    var currentFamilyId = 'presales_voice';
+    var allFieldKeys = [
+      'campaign_objective_id', 'campaign_type', 'campaign_sub_type',
+      'campaign_objective_name', 'campaign_objective_description',
+      'purpose', 'dealership_id', 'dealer_name', 'brand_id', 'search_term',
+      'who_are_you', 'who_you_represent', 'who_is_the_customer',
+      'custom_conversation_start_pattern', 'purpose_steps',
+      'conversation_tone', 'why_user_should_avail_this',
+      'reasons_users_may_not_be_interested', 'reasons_for_non_applicability',
+      'guardrails_guidelines', 'other_important_information',
+      'doc_data', 'is_custom', 'filter_params'
+    ];
+
+    function init() {
+      renderFamilyTabs();
+      populateSubTypes();
+      renderExtraFields();
+      onTabClick(currentFamilyId);
+      updateAll();
+    }
+
+    function renderFamilyTabs() {
+      var container = document.getElementById('familyTabs');
+      container.innerHTML = Object.values(CAMPAIGN_FAMILIES).map(function (f) {
+        return '<button class="family-tab" data-family="' + f.id + '" onclick="onTabClick(\'' + f.id + '\')">' +
+          '<span class="tab-icon">' + f.icon + '</span>' +
+          '<span class="tab-label">' + escapeHtml(f.label) + '</span>' +
+          '<span class="tab-desc">' + escapeHtml(f.description) + '</span>' +
+          '</button>';
+      }).join('');
+    }
+
+    function populateSubTypes() {
+      var fam = CAMPAIGN_FAMILIES[currentFamilyId];
+      var sel = document.getElementById('subTypeSelect');
+      sel.innerHTML = fam.subTypes.map(function (st) {
+        return '<option value="' + st.id + '">' + escapeHtml(st.label) + '</option>';
+      }).join('');
+      sel.onchange = function () { updateAll(); };
+    }
+
+    function renderExtraFields() {
+      var fam = CAMPAIGN_FAMILIES[currentFamilyId];
+      var grid = document.getElementById('extraFieldsGrid');
+      grid.innerHTML = fam.extraFields.map(function (ef) {
+        var val = getStoredValue(ef.key);
+        return '<div class="form-group">' +
+          '<label>' + escapeHtml(ef.label) + '</label>' +
+          '<div class="field-hint">' + escapeHtml(ef.hint) + '</div>' +
+          '<input type="text" id="' + ef.key + '" value="' + escapeHtml(val) + '" oninput="onFormChange()" placeholder="' + escapeHtml(ef.hint) + '" />' +
+          '</div>';
+      }).join('');
+    }
+
+    function onTabClick(familyId) {
+      currentFamilyId = familyId;
+      document.querySelectorAll('.family-tab').forEach(function (t) {
+        t.classList.toggle('active', t.dataset.family === familyId);
+      });
+      populateSubTypes();
+      renderExtraFields();
+      updateFieldLabels();
+      updateAll();
+    }
+
+    function updateFieldLabels() {
+      var fam = CAMPAIGN_FAMILIES[currentFamilyId];
+      var overrides = fam.fieldOverrides || {};
+
+      // Opening line / Message body
+      var ol = document.getElementById('openingLabel');
+      var oh = document.getElementById('openingHint');
+      if (overrides.custom_conversation_start_pattern) {
+        ol.textContent = overrides.custom_conversation_start_pattern.label;
+        oh.textContent = overrides.custom_conversation_start_pattern.hint;
+      } else {
+        ol.textContent = 'Custom Conversation Start Pattern';
+        oh.textContent = 'Opening line for the AI agent';
+      }
+
+      // Tone / Language style
+      var tl = document.getElementById('toneLabel');
+      var th = document.getElementById('toneHint');
+      if (overrides.conversation_tone) {
+        tl.textContent = overrides.conversation_tone.label;
+        th.textContent = overrides.conversation_tone.hint;
+      } else {
+        tl.textContent = 'Conversation Tone';
+        th.textContent = 'Agent speaking style';
+      }
+
+      // Purpose steps / Workflow stages
+      var sl = document.getElementById('stepsLabel');
+      var sh = document.getElementById('stepsHint');
+      if (overrides.purpose_steps) {
+        sl.textContent = overrides.purpose_steps.label;
+        sh.textContent = overrides.purpose_steps.hint;
+      } else {
+        sl.textContent = 'Purpose Steps';
+        sh.textContent = 'Step-by-step flow (voice) or workflow stages';
+      }
+
+      // Objections / Branch responses
+      var rl = document.getElementById('reasonsLabel');
+      if (overrides.reasons_users_may_not_be_interested) {
+        rl.textContent = overrides.reasons_users_may_not_be_interested.hint;
+      } else {
+        rl.textContent = 'Objection handling for voice AI';
+      }
+
+      // Non-applicability / Opt-out
+      var nl = document.getElementById('nonApplicabilityLabel');
+      if (overrides.reasons_for_non_applicability) {
+        nl.textContent = overrides.reasons_for_non_applicability.hint;
+      } else {
+        nl.textContent = 'When the campaign does not apply';
+      }
+    }
+
+    function getStoredValue(key) {
+      var el = document.getElementById(key);
+      return el ? el.value : '';
+    }
+
+    function onFormChange() {
+      updateAll();
+    }
+
+    function buildCampaignObjective() {
+      var fam = CAMPAIGN_FAMILIES[currentFamilyId];
+      var subTypeEl = document.getElementById('subTypeSelect');
+      var subType = subTypeEl ? subTypeEl.value : fam.subTypes[0].id;
+      var subTypeLabel = subTypeEl ? subTypeEl.options[subTypeEl.selectedIndex].text : fam.subTypes[0].label;
+
+      var obj = {
+        campaign_objective_id: generateUUID(),
+        campaign_type: fam.label,
+        campaign_sub_type: subTypeLabel,
+        campaign_objective_name: getStoredValue('campaign_objective_name'),
+        campaign_objective_description: getStoredValue('campaign_objective_description'),
+        purpose: getStoredValue('purpose'),
+        dealership_id: getStoredValue('dealership_id'),
+        dealer_name: getStoredValue('dealer_name'),
+        brand_id: getStoredValue('brand_id'),
+        search_term: buildSearchTerm(fam, subTypeLabel),
+        who_are_you: getStoredValue('who_are_you'),
+        who_you_represent: getStoredValue('who_you_represent'),
+        who_is_the_customer: getStoredValue('who_is_the_customer'),
+        custom_conversation_start_pattern: getStoredValue('custom_conversation_start_pattern'),
+        purpose_steps: getStoredValue('purpose_steps'),
+        conversation_tone: getStoredValue('conversation_tone'),
+        why_user_should_avail_this: getStoredValue('why_user_should_avail_this'),
+        reasons_users_may_not_be_interested: getStoredValue('reasons_users_may_not_be_interested'),
+        reasons_for_non_applicability: getStoredValue('reasons_for_non_applicability'),
+        guardrails_guidelines: getStoredValue('guardrails_guidelines'),
+        other_important_information: getStoredValue('other_important_information'),
+        doc_data: {
+          created_by: 'Campaign Objective Generator',
+          created_at: new Date().toISOString(),
+          version: '1.0',
+          campaign_family: fam.id,
+          campaign_sub_type_id: subType
+        },
+        is_custom: document.getElementById('is_custom').checked,
+        filter_params: parseFilterParams()
+      };
+
+      // Add extra fields to the output
+      fam.extraFields.forEach(function (ef) {
+        obj[ef.key] = getStoredValue(ef.key);
+      });
+
+      return obj;
+    }
+
+    function buildSearchTerm(fam, subTypeLabel) {
+      var parts = [];
+      var name = getStoredValue('campaign_objective_name');
+      var dealer = getStoredValue('dealer_name');
+      var brand = getStoredValue('brand_id');
+      var vehicle = getStoredValue('vehicle_model') || getStoredValue('service_type') || '';
+      if (name) parts.push(name);
+      if (dealer) parts.push(dealer);
+      if (brand) parts.push(brand);
+      if (vehicle) parts.push(vehicle);
+      parts.push(fam.label, subTypeLabel);
+      return parts.join(' | ');
+    }
+
+    function parseFilterParams() {
+      var val = getStoredValue('filter_params').trim();
+      if (!val) return {};
+      try { return JSON.parse(val); }
+      catch (e) { return { _parse_error: 'Invalid JSON: ' + e.message }; }
+    }
+
+    function generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
+
+    function updateAll() {
+      var obj = buildCampaignObjective();
+      renderAutoFields(obj);
+      renderPreview(obj);
+      updateStats(obj);
+      document.getElementById('downloadBtn').disabled = !obj.campaign_objective_name.trim();
+    }
+
+    function renderAutoFields(obj) {
+      document.getElementById('campaign_objective_id').textContent = obj.campaign_objective_id;
+      document.getElementById('campaign_type').textContent = obj.campaign_type;
+      document.getElementById('campaign_sub_type').textContent = obj.campaign_sub_type;
+      document.getElementById('search_term').textContent = obj.search_term;
+      document.getElementById('doc_data').textContent = JSON.stringify(obj.doc_data);
+    }
+
+    function updateStats(obj) {
+      var filled = 0;
+      allFieldKeys.forEach(function (k) {
+        if (k === 'is_custom') return;
+        if (k === 'filter_params') return;
+        if (k === 'doc_data') return;
+        if (k === 'campaign_objective_id') return;
+        if (k === 'campaign_sub_type') return;
+        if (k === 'search_term') return;
+        var v = obj[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') filled++;
+      });
+
+      // Also count extra fields
+      var fam = CAMPAIGN_FAMILIES[currentFamilyId];
+      fam.extraFields.forEach(function (ef) {
+        var v = obj[ef.key];
+        if (v !== undefined && v !== null && String(v).trim() !== '') filled++;
+      });
+
+      var countableKeys = allFieldKeys.filter(function (k) {
+        return k !== 'campaign_objective_id' && k !== 'search_term' && k !== 'doc_data' && k !== 'is_custom' && k !== 'filter_params' && k !== 'campaign_sub_type';
+      }).length + fam.extraFields.length;
+
+      document.getElementById('fieldCount').textContent = countableKeys;
+      document.getElementById('fieldFilled').textContent = filled;
+      document.getElementById('fieldPct').textContent = Math.round((filled / Math.max(countableKeys, 1)) * 100) + '%';
+    }
+
+    function renderPreview(obj) {
+      var preview = document.getElementById('jsonPreview');
+      preview.innerHTML = syntaxHighlight(JSON.stringify(obj, null, 2));
+    }
+
+    function syntaxHighlight(json) {
+      var escaped = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return escaped
+        .replace(/"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/g, '<span class="json-key">"$1"</span>:')
+        .replace(/: "([^"\\]*(?:\\.[^"\\]*)*)"/g, ': <span class="json-string">"$1"</span>')
+        .replace(/: (-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+        .replace(/: (true|false)/g, ': <span class="json-bool">$1</span>')
+        .replace(/: null/g, ': <span class="json-null">null</span>');
+    }
+
+    function downloadJSON() {
+      var obj = buildCampaignObjective();
+      if (!obj.campaign_objective_name.trim()) {
+        setStatus('Fill in at least the Campaign Objective Name.', 'warn');
+        return;
+      }
+      var blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      var safeName = obj.campaign_objective_name.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'campaign';
+      a.href = url;
+      a.download = safeName + '_' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus('Downloaded: ' + a.download, 'ok');
+    }
+
+    function copyJSON() {
+      var obj = buildCampaignObjective();
+      if (!obj.campaign_objective_name.trim()) {
+        setStatus('Fill in at least the Campaign Objective Name.', 'warn');
+        return;
+      }
+      navigator.clipboard.writeText(JSON.stringify(obj, null, 2)).then(function () {
+        showToast('Copied to clipboard');
+        setStatus('JSON copied to clipboard.', 'ok');
+      }).catch(function () {
+        setStatus('Failed to copy.', 'err');
+      });
+    }
+
+    function clearForm() {
+      if (!confirm('Clear all form fields?')) return;
+      document.querySelectorAll('input[type="text"], textarea').forEach(function (el) {
+        el.value = '';
+      });
+      document.querySelectorAll('input[type="checkbox"]').forEach(function (el) {
+        el.checked = false;
+      });
+      document.getElementById('filter_params').value = '';
+      updateAll();
+      setStatus('Form cleared.', '');
+    }
+
+    function setStatus(msg, type) {
+      var el = document.getElementById('globalStatus');
+      el.textContent = msg;
+      el.className = 'status' + (type ? ' ' + type : '');
+    }
+
+    function showToast(msg) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(t._toastTimer);
+      t._toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2000);
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    applyTheme(getStoredTheme());
+    init();
+  </script>
+</body>
+</html>

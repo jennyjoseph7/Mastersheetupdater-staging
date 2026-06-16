@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+  
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://autobot-webapp-dev.gryd.in http://localhost:3456; form-action 'self'; base-uri 'self'; object-src 'none'; " />
+  <script>
+    (function() {
+      var theme = localStorage.getItem('jejo-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <script>
+    (function() {
+      function requireAuth() {
+        var token = sessionStorage.getItem('gryd_token');
+        var expiry = sessionStorage.getItem('gryd_expiry');
+        if (!token || !expiry || parseInt(expiry) <= Math.floor(Date.now() / 1000)) {
+          window.location.replace('../login.html');
+          return false;
+        }
+        return true;
+      }
+      requireAuth();
+      window.addEventListener('pageshow', function() { requireAuth(); });
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') requireAuth();
+      });
+      window.addEventListener('unload', function() {});
+    })();
+  </script>
+  <title>Call Analysis Summary - AutoNage</title>
+  <meta name="description" content="Import a processed Pre-Sales or Post-Sales Sync export and generate the call analysis summary." />
+  <link rel="stylesheet" href="../assets/fonts/fonts.css" />
+  <script src="../assets/js/lib/ai-config.js?v=20260613"></script>
+  <script src="../config.js?v=20260610"></script>
+  <script src="../assets/js/vendor/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="../assets/styles/call-analysis-summary.css" />
+</head>
+
+<body>
+  <header>
+
+    <div class="header-inner">
+      <div class="header-left">
+        <a class="brand-mark" href="../index.html" aria-label="Go to home"><img src="../assets/images/AN Dark.png" data-light-logo="../assets/images/AN.png" data-dark-logo="../assets/images/AN Dark.png" alt="AutoNage"></a>
+        <div>
+          <h1>Call Analysis Summary</h1>
+          <div class="header-sub">Generate call analysis summary</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="navContainer"></div>
+<script>loadNavSafe("navContainer");</script>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="icon-moon" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+          <svg class="icon-sun" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        </button>
+      </div>
+    </div>
+  
+  </header>
+
+  <main>
+    <div class="upload-section slide-up" id="uploadSection">
+      <div class="section-title">Upload Processed Sync Export</div>
+      <div class="upload-controls">
+        <span class="mode-label">Campaign mode</span>
+        <select id="campaignMode" class="mode-select" aria-label="Pre-Sales or Post-Sales">
+          <option value="auto">Auto Detect</option>
+          <option value="pre">Pre-Sales</option>
+          <option value="post">Post-Sales</option>
+        </select>
+        <span class="mode-label" style="margin-left:0.5rem;">Dealership</span>
+        <select id="dealerSelectCallAnalysis" class="mode-select" aria-label="Dealership">
+          <option value="perfect_riders_service">Perfect Riders</option>
+          <option value="fortune_service">Fortune</option>
+          <option value="ambal_service">Ambal</option>
+          <option value="bullmen_service">Bullmen</option>
+          <option value="pressana_service_feedback">Pressana</option>
+          <option value="pressana_post_service_feedback">Pressana Post</option>
+          <option value="suryabala_service">Suryabala</option>
+          <option value="icare_feedback">Icare</option>
+        </select>
+        <span class="mode-label" style="margin-left:0.5rem;">Date format</span>
+        <select id="dateFormatSelect" class="mode-select" aria-label="Date format" onchange="handleDateFormatChange()">
+          <option value="auto">Auto Detect</option>
+          <option value="DMY">DD/MM/YYYY</option>
+          <option value="MDY">MM/DD/YYYY</option>
+        </select>
+        <span class="date-parser-note" id="dateParserNote">Format: —</span>
+      </div>
+      <div class="upload-row">
+        <div class="drop-zone-dash" id="dropZone" onclick="document.getElementById('fileInput').click()" role="button" tabindex="0">
+          <div class="dz-icon">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div class="dz-text">
+            <strong>AutoNage_Disposition_Sync (.xlsx / .csv)</strong>
+            <small id="fileMeta">Drop file here or click to browse. Pre-Sales: Outcome, Disposition, SUMMARY, Call_Date. Post-Sales: STATUS, DISPOSITION_DETAILS, UPDATED_DISPOSITION, SUMMARY, Call_Date.</small>
+          </div>
+          <span class="dz-status" id="statusText">No file selected</span>
+          <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv" />
+        </div>
+        <button class="btn-generate" type="button" id="copyBtn" onclick="copySummaryText()" disabled>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Copy Summary
+        </button>
+      </div>
+    </div>
+
+    <div class="campaign-bar slide-up" id="summaryBar" style="display:none;">
+      <div class="campaign-info">
+        <div class="campaign-name" id="summaryTitle">Call Analysis <span>Summary</span></div>
+        <div class="campaign-subtitle" id="summarySubtitle">Import sync export data</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.25rem;">
+        <div class="date-range-label">IMPORTED ROWS</div>
+        <div class="date-range-badge" id="rowCount">0</div>
+      </div>
+    </div>
+
+    <div class="summary-panel" id="summaryPanel">
+      <div class="summary-grid" id="summaryGrid"></div>
+
+      <div class="rule-audit" id="ruleAudit">
+        <div class="preview-table-header">
+          <div class="preview-title">
+            Metric Rules
+            <span class="preview-count">How each count was classified</span>
+          </div>
+        </div>
+        <div class="rule-grid" id="ruleGrid"></div>
+      </div>
+
+      <div class="preview-table-wrapper" id="bookingTableWrapper">
+        <div class="preview-table-header">
+          <div class="preview-title">
+            <span id="bookingPreviewTitle">Test Drive Bookings Preview</span>
+            <span class="preview-count" id="bookingPreviewCount">0 rows</span>
+          </div>
+          <button class="btn" id="btnCopyBookings" type="button" onclick="copyBookingData()">Copy Bookings</button>
+        </div>
+        <div class="preview-table-scroll">
+          <table id="bookingTable">
+            <thead>
+              <tr>
+                <th>PHONE_NUMBER</th>
+                <th>VEHICLE_MODEL</th>
+                <th>DISPOSITION_DETAILS</th>
+                <th>LOCATION</th>
+                <th>CALL_DATE</th>
+              </tr>
+            </thead>
+            <tbody id="bookingBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="preview-table-wrapper" id="completedTableWrapper">
+        <div class="preview-table-header">
+          <div class="preview-title">
+            <span id="completedPreviewTitle">Test Drive Completed Preview</span>
+            <span class="preview-count" id="completedPreviewCount">0 rows</span>
+          </div>
+          <button class="btn" id="btnCopyCompleted" type="button" onclick="copyCompletedData()">Copy Completed</button>
+        </div>
+        <div class="preview-table-scroll">
+          <table id="completedTable">
+            <thead>
+              <tr>
+                <th>PHONE_NUMBER</th>
+                <th>VEHICLE_MODEL</th>
+                <th>CALL_DATE</th>
+                <th>DISPOSITION_DETAILS</th>
+              </tr>
+            </thead>
+            <tbody id="completedBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="empty-dashboard" id="emptyPanel">
+      <div class="empty-icon">
+        <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M9 17v-6m4 6V7m4 10v-4M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <h2>Upload a Processed File to See the Summary</h2>
+      <p>Use the Excel export from Pre-Sales Sync or Post-Sales Disposition Sync. Choose campaign mode or Auto Detect. The summary KPIs match the logic used on the Dashboard.</p>
+    </div>
+  </main>
+
+  <footer>AutoNage - Call Analysis Summary - Lead Operations Automation</footer>
+
+  <script>
+    const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+
+    var DEALER_NAMES = {
+      perfect_riders_service: 'Perfect Riders',
+      fortune_service: 'Fortune',
+      ambal_service: 'Ambal',
+      bullmen_service: 'Bullmen',
+      pressana_service_feedback: 'Pressana',
+      pressana_post_service_feedback: 'Pressana Post',
+      suryabala_service: 'Suryabala',
+      icare_feedback: 'Icare'
+    };
+
+    var PRE_SALES_DISPOSITIONS = {
+      "Voicemail": "If the customer has asked to leave a message or voicemail.",
+      "Rejected": "If the customer has rejected the offer or to even speak with the agent.",
+      "Language barrier": "If the customer has asked to speak in a different language and did not finish the conversation or intent of the campaign.",
+      "Is not decision maker": "the customer said they are not the right person to speak to about this in their family.",
+      "Will decide later, will purchase within 15 days": "The customer said they would decide to buy the vehicle within 15 days.",
+      "Will decide later, will purchase within 1 to 3 months": "The customer said they would decide to buy the vehicle within 1 to 3 months.",
+      "Will decide later, exploring options": "The customer said they will decide on the purchase of the vehicle at a later time and are only exploring all their options now.",
+      "No buying intent": "the customer Do not want to purchase a car. Neither are the interested in the car.",
+      "Just Exploring": "the customer Only want to know about the vehicle but do not show intent to buy.",
+      "Will call showroom themselves": "the customer will contact the dealership or showroom themselves.",
+      "Requested Callback": "the customer Asked to call back at a later date and or time.",
+      "Purchased elsewhere": "the customer Already purchased a vehicle elsewhere.",
+      "Enquired for Pricing": "the customer by themselves asked for the price of the vehicle.",
+      "Enquired for Specifications": "the customer by themselves asked for the specifications of the vehicle.",
+      "Enquired for Test Drive": "the customer by themselves asked for a test drive of the vehicle.",
+      "Enquired for Showroom Visit": "the customer by themselves asked for a showroom visit of the vehicle.",
+      "Enquired for Brochure": "the customer by themselves asked for a brochure of the vehicle.",
+      "Enquired for Dealership Details": "the customer by themselves asked for dealership details.",
+      "Enquired for Others": "the customer by themselves asked for other details not listed above.",
+      "Comparing with another brand": "The customer by themselves is comparing the vehicle with another brand.",
+      "Call Disconnected": "The customer by themselves has disconnected the call.",
+      "Others": "All other disposition details not listed above.",
+      "General Inquiry": "the customer is Asking generic questions not specific to the purpose of the campaign or the vehicle.",
+      "Not Interested": "the customer Specifically said they are not interested in the vehicle.",
+      "Follow Up Required": "the customer Needs a follow up to convince them to complete the campaign objective.",
+      "No Response": "the customer did not say anything at all.",
+      "Lost to Competition": "the customer Bought a competitor brands vehicle.",
+      "Test Drive Completed": "the customer Already completed a test drive.",
+      "Invalid Lead": "the customer Not a valid lead.",
+      "Purchase Postponed": "the customer indicates that the Purchase has been postponed",
+      "Audio Issue": "There was issues with hearing the customer or the agent for either party.",
+      "Showroom Visit Planned": "the customer Already booked a showroom visit.",
+      "Converted": "The customer completes the purpose of the campaign and provides the necessary information.",
+      "Talk to Human": "The customer asked to speak to a human agent or customer executive instead of the digital assistant.",
+      "Interested in another car same dealership": "The customer is interested in a different vehicle model from the same dealership."
+    };
+
+    var POST_SALES_DISPOSITIONS = {
+      "Voicemail": "If the customer has asked to leave a message or voicemail.",
+      "Rejected": "If the customer has rejected the offer or to even speak with the agent. repeated rejection.",
+      "Language barrier": "If the customer has asked to speak in a different language and did not finish the conversation or intent of the campaign.",
+      "Vehicle is commercial or part of a fleet": "The vehicle is a commercial vehicle and not applicable for the campaign purpose.",
+      "Vehicle is not being run": "Vehicle is unused and not being run.",
+      "Requires special spare parts": "The vehicle requires special spare parts for repair.",
+      "Others": "All other disposition details not listed above.",
+      "Wrong contact number": "Customer tells the agent they have the wrong person or number that was contacted",
+      "Has sold/given away the car": "The customer has sold or given away the vehicle.",
+      "Has moved to another location": "The customer has moved to another location.",
+      "Cannot make decision on servicing": "The customer the agent has called is not the right person to make the decision.",
+      "Will call workshop themselves": "The customer will contact the workshop themselves.",
+      "Requested Callback": "The customer asked the agent to call back at a later date and or time.",
+      "Looking for a discount": "The customer is looking for a discount on the campaign purpose.",
+      "Has serviced car in another dealership": "The customer has serviced the vehicle in another dealership.",
+      "Will decide tomorrow": "The customer said they would decide to service the vehicle tomorrow.",
+      "Will decide within 1 to 3 days": "The customer said they would decide to service the vehicle within 1 to 3 days.",
+      "Will decide within 4 to 7 days": "The customer said they would decide to service the vehicle within 4 to 7 days.",
+      "Will decide within 8 to 14 days": "The customer said they would decide to service the vehicle within 8 to 14 days.",
+      "Will decide within 15 to 30 days": "The customer said they would decide to service the vehicle within 15 to 30 days.",
+      "Will decide within 31 to 60 days": "The customer said they would decide to service the vehicle within 31 to 60 days.",
+      "Will decide within 61 to 90 days": "The customer said they would decide to service the vehicle within 61 to 90 days.",
+      "Will decide after 90 days": "The customer said they would decide to service the vehicle after 90 days.",
+      "Unsubscribed": "The customer asked to unsubscribed from the campaign.",
+      "Call Disconnected": "The call ended abruptly without completing the campaign objective.",
+      "Audio Issue": "There was issues with hearing the customer or the agent for either party.",
+      "Call Quality Issue": "There was issues with the quality of the call.",
+      "Connection Issue": "There was issues with the connection between the customer and the agent.",
+      "Customer Busy": "The customer was busy.",
+      "No Response": "The customer did not say anything at all.",
+      "Price Inquiry": "The customer is interested in the price of the service.",
+      "Lost to Competition": "the customer already did the campaign objective from a competitors workshop",
+      "Invalid Lead": "Not a valid lead.",
+      "Not Interested": "The customer specifically said they are not interested or declined the offer/service.",
+      "Service Postponed": "They decided or implied they will postpone the service.",
+      "Showroom Visit Planned": "Already booked a showroom visit.",
+      "Existing Dealer Contact": "The customer already did the campaign objective from an existing dealership.",
+      "Contact Fatigue": "customer implied they were being contacted too many times by the agent.",
+      "Converted": "The customer completes the purpose of the campaign and provides the necessary information.",
+      "Talk to Human": "The customer asked to speak to a human agent or customer executive instead of the digital assistant.",
+      "Interested in another car same dealership": "The customer is interested in a different vehicle model from the same dealership."
+    };
+
+    var POST_SALES_KPI_GROUPS = {
+      "Service Booked": ["Converted"],
+      "Service Completed": ["Has serviced car in another dealership", "Existing Dealer Contact"],
+      "Invalid Lead": ["Invalid Lead", "Not Interested", "Rejected"],
+      "Requested Callback": ["Requested Callback"],
+      "Follow Up Required": [
+        "Showroom Visit Planned", "Will call workshop themselves",
+        "Service Postponed", "Will decide tomorrow",
+        "Will decide within 1 to 3 days", "Will decide within 4 to 7 days",
+        "Will decide within 8 to 14 days", "Will decide within 15 to 30 days",
+        "Will decide within 31 to 60 days", "Will decide within 61 to 90 days",
+        "Will decide after 90 days", "Talk to Human"
+      ],
+      "Voicemail": ["Voicemail"]
+    };
+
+    function getPostDispositionKey(row) {
+      var ud = clean(row.updated_disposition);
+      if (ud && POST_SALES_DISPOSITIONS[ud]) return ud;
+      var d = clean(row.disposition_detail || row.disposition);
+      if (d && POST_SALES_DISPOSITIONS[d]) return d;
+      return null;
+    }
+
+    function isDispositionMatch(row, keys) {
+      var k = getPostDispositionKey(row);
+      return k && keys.indexOf(k) !== -1;
+    }
+
+    function getPreDispositionKey(row) {
+      var d = clean(row.disposition_detail || row.disposition);
+      if (d && PRE_SALES_DISPOSITIONS[d]) return d;
+      return null;
+    }
+
+    function isPreDispositionMatch(row, keys) {
+      var k = getPreDispositionKey(row);
+      return k && keys.indexOf(k) !== -1;
+    }
+
+    let importedRows = [];
+    let summaryItems = [];
+    let summaryTitleText = '';
+    let bookingPreviewData = [];
+    let completedPreviewData = [];
+    let activeCampaignMode = 'pre';
+    let dateParseOrder = 'DMY';
+
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+    const campaignModeSelect = document.getElementById('campaignMode');
+
+    if (campaignModeSelect) {
+      campaignModeSelect.addEventListener('change', function() {
+        if (importedRows.length) {
+          renderSummary(importedRows);
+        }
+      });
+    }
+
+    var dealerSelectCallAnalysis = document.getElementById('dealerSelectCallAnalysis');
+    if (dealerSelectCallAnalysis) {
+      dealerSelectCallAnalysis.addEventListener('change', function() {
+        if (importedRows.length) {
+          renderSummary(importedRows);
+        }
+      });
+    }
+
+    function detectDateFormat(dateStrings) {
+      var sampleLimit = Math.min(dateStrings.length, 250);
+      for (var i = 0; i < sampleLimit; i++) {
+        var s = String(dateStrings[i] || '').trim();
+        var m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+        if (!m) continue;
+        var a = parseInt(m[1], 10);
+        var b = parseInt(m[2], 10);
+        if (a > 12 && b <= 12) return 'DMY';
+        if (b > 12 && a <= 12) return 'MDY';
+      }
+      return 'DMY'; // default
+    }
+
+    function updateDateParserNote() {
+      var sel = document.getElementById('dateFormatSelect');
+      var note = document.getElementById('dateParserNote');
+      if (!sel || !note) return;
+      var mode = sel.value === 'auto' ? 'Auto' : 'Manual';
+      var label = dateParseOrder === 'MDY' ? 'MM/DD/YYYY' : 'DD/MM/YYYY';
+      note.textContent = 'Format: ' + label + ' (' + mode + ')';
+    }
+
+    function handleDateFormatChange() {
+      var sel = document.getElementById('dateFormatSelect');
+      if (!sel) return;
+      if (sel.value === 'auto') {
+        if (importedRows.length) {
+          var dates = importedRows.map(function(r) { return r.call_date_raw || ''; });
+          dateParseOrder = detectDateFormat(dates);
+        }
+      } else {
+        dateParseOrder = sel.value;
+      }
+      updateDateParserNote();
+      if (importedRows.length) {
+        // Re-normalize dates from raw source using the (possibly detected) format
+        importedRows = importedRows.map(function(row) {
+          if (row.call_date_raw !== undefined) {
+            return Object.assign({}, row, { call_date: normalizeDateString(row.call_date_raw) });
+          }
+          return row;
+        });
+        renderSummary(importedRows);
+      }
+    }
+
+    function normalizeDateString(raw) {
+      if (!raw) return '';
+      var s = String(raw).trim();
+      var match = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (!match) return s;
+      var first = parseInt(match[1], 10);
+      var second = parseInt(match[2], 10);
+      var year = parseInt(match[3], 10);
+      if (year < 100) year += 2000;
+
+      if (dateParseOrder === 'MDY') {
+        // Try MM/DD/YYYY first
+        if (first >= 1 && first <= 12 && second >= 1 && second <= 31) {
+          var day = second < 10 ? '0' + second : '' + second;
+          var month = first < 10 ? '0' + first : '' + first;
+          return day + '/' + month + '/' + year;
+        }
+        // Fallback: try DD/MM/YYYY
+        if (second >= 1 && second <= 12 && first >= 1 && first <= 31) {
+          var day = first < 10 ? '0' + first : '' + first;
+          var month = second < 10 ? '0' + second : '' + second;
+          return day + '/' + month + '/' + year;
+        }
+        return s;
+      }
+
+      // Default: DMY — try DD/MM/YYYY first
+      if (second >= 1 && second <= 12 && first >= 1 && first <= 31) {
+        var day = first < 10 ? '0' + first : '' + first;
+        var month = second < 10 ? '0' + second : '' + second;
+        return day + '/' + month + '/' + year;
+      }
+      // Fallback: try MM/DD/YYYY
+      if (first >= 1 && first <= 12 && second >= 1 && second <= 31) {
+        var day = second < 10 ? '0' + second : '' + second;
+        var month = first < 10 ? '0' + first : '' + first;
+        return day + '/' + month + '/' + year;
+      }
+      return s;
+    }
+
+    fileInput.addEventListener('change', function() {
+      if (fileInput.files && fileInput.files[0]) {
+        if (!validateFileSize(fileInput.files[0])) { fileInput.value = ''; return; }
+        handleFile(fileInput.files[0]);
+      }
+    });
+
+    dropZone.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(function(eventName) {
+      dropZone.addEventListener(eventName, function(event) {
+        event.preventDefault();
+        dropZone.classList.add('drag-over');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(function(eventName) {
+      dropZone.addEventListener(eventName, function(event) {
+        event.preventDefault();
+        dropZone.classList.remove('drag-over');
+      });
+    });
+
+    dropZone.addEventListener('drop', function(event) {
+      const file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+
+    async function handleFile(file) {
+      try {
+        if (!window.XLSX) {
+          throw new Error('Spreadsheet parser failed to load. Check the network connection and reload the page.');
+        }
+
+        setStatus('Reading file...', '');
+        document.getElementById('fileMeta').textContent = file.name;
+
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+        const sheetName = getSummarySheetName(workbook);
+        if (!sheetName) throw new Error('No worksheet found in the uploaded file.');
+
+        importedRows = getWorkbookRows(workbook);
+
+        if (!importedRows.length) {
+          throw new Error('No usable rows found. Upload a processed Pre-Sales or Post-Sales sync output file.');
+        }
+
+        // Auto-detect date format
+        var dateSel = document.getElementById('dateFormatSelect');
+        if (dateSel && dateSel.value === 'auto') {
+          var dates = importedRows.map(function(r) { return r.call_date_raw || ''; });
+          dateParseOrder = detectDateFormat(dates);
+        }
+
+        updateDateParserNote();
+
+        renderSummary(importedRows);
+        document.getElementById('rowCount').textContent = importedRows.length;
+        document.getElementById('summarySubtitle').textContent = file.name + ' · ' + (activeCampaignMode === 'post' ? 'Post-Sales' : 'Pre-Sales');
+        document.getElementById('copyBtn').disabled = false;
+        dropZone.classList.add('has-file');
+        setStatus(file.name + ' imported.', 'ok');
+      } catch (error) {
+        importedRows = [];
+        summaryItems = [];
+        summaryTitleText = '';
+        hidePreviewTables();
+        document.getElementById('rowCount').textContent = '0';
+        document.getElementById('summaryPanel').classList.remove('show');
+        document.getElementById('summaryBar').style.display = 'none';
+        document.getElementById('emptyPanel').style.display = 'block';
+        document.getElementById('copyBtn').disabled = true;
+        dropZone.classList.remove('has-file');
+        setStatus(error.message, 'err');
+      }
+    }
+
+    function normalizeRows(rows) {
+      return rows
+        .filter(rowHasData)
+        .map(function(row) {
+          const get = makeGetter(row);
+          return {
+            full_name: clean(get(['Full_Name', 'Full Name', 'person_name', 'name'])),
+            phone: clean(get(['Phone', 'phone_number', 'mobile', 'contact_number'])),
+            city: clean(get(['City', 'city'])),
+            model: clean(get(['Model', 'Vehicle_Model', 'Vehicle Model', 'model_preference', 'interested_vehicle_name', 'existing_vehicle_model'])),
+            outcome: clean(get(['Outcome', 'OUTCOME'])),
+            status: clean(get(['STATUS', 'Status', 'session_status', 'Session_Status'])),
+            disposition: clean(get([
+              'Disposition',
+              'DISPOSITION_DETAILS',
+              'Disposition_Details',
+              'disposition_detail',
+              'Disposition Details'
+            ])),
+            updated_disposition: clean(get([
+              'UPDATED_DISPOSITION',
+              'Updated Disposition',
+              'updated_disposition'
+            ])),
+            summary: clean(get(['SUMMARY', 'Summary', 'call_summary', 'conversation_summary', 'notes'])),
+            updated_summary: clean(get(['Updated SUMMARY', 'Updated Summary', 'updated_summary'])),
+            disposition_detail: clean(get([
+              'Disposition_detail',
+              'disposition_detail',
+              'DISPOSITION_DETAILS',
+              'Disposition_Details',
+              'Disposition Details'
+            ])),
+            manual_disposition_detail: clean(get([
+              'Manual_Disposition_detail',
+              'manual_disposition_detail',
+              'MANUAL_DISPOSITION_DETAIL'
+            ])),
+            conversion: clean(get(['Conversion', 'conversion'])),
+            session_summary: clean(get(['Session_Summary', 'Session Summary', 'session_summary'])),
+            call_date_raw: clean(get(['Call_Date', 'Call Date', 'created', 'start_time', 'date'])),
+            call_date: normalizeDateString(clean(get(['Call_Date', 'Call Date', 'created', 'start_time', 'date'])) || ''),
+            attempts: clean(get([
+              'NUMBER OF ATTEMPTS',
+              'NUMBER_OF_ATTEMPTS',
+              'number_of_attempts',
+              'attempts',
+              'Attempt'
+            ])),
+            next_service_due: clean(get(['NEXT_SERVICE_DUE', 'next_service_due', 'NEXT_SERVICE_DATE', 'next_service_date']))
+          };
+        });
+      return rows;
+    }
+
+    function getWorkbookRows(workbook) {
+      const primarySheetName = getSummarySheetName(workbook);
+      if (!primarySheetName) return [];
+
+      const primaryRows = normalizeRows(readSheetRows(workbook, primarySheetName));
+      const processedSheetName = workbook.SheetNames.find(function(name) {
+        return normalizeKey(name) === 'processedleads';
+      });
+      const supplementSheetName = processedSheetName && processedSheetName !== primarySheetName
+        ? processedSheetName
+        : workbook.SheetNames.find(function(name) {
+            return name !== primarySheetName;
+          });
+
+      if (!supplementSheetName) return primaryRows;
+      return mergeWorkbookRows(primaryRows, normalizeRows(readSheetRows(workbook, supplementSheetName)));
+    }
+
+    function readSheetRows(workbook, sheetName) {
+      const worksheet = workbook.Sheets[sheetName];
+      if (!worksheet) return [];
+      return XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
+    }
+
+    function mergeWorkbookRows(primaryRows, supplementRows) {
+      if (!primaryRows.length) return supplementRows;
+      if (!supplementRows.length) return primaryRows;
+
+      const supplementsByPhone = new Map();
+      supplementRows.forEach(function(row) {
+        const key = phoneKey(row.phone);
+        if (key && !supplementsByPhone.has(key)) supplementsByPhone.set(key, row);
+      });
+
+      const seenPhones = new Set();
+      const merged = primaryRows.map(function(row) {
+        const key = phoneKey(row.phone);
+        if (key) seenPhones.add(key);
+        const supplement = key ? supplementsByPhone.get(key) : null;
+        if (!supplement) return row;
+
+        const combined = Object.assign({}, supplement, row);
+        Object.keys(supplement).forEach(function(field) {
+          if (!clean(combined[field]) && clean(supplement[field])) combined[field] = supplement[field];
+        });
+        return combined;
+      });
+
+      supplementRows.forEach(function(row) {
+        const key = phoneKey(row.phone);
+        if (!key || !seenPhones.has(key)) merged.push(row);
+      });
+
+      return merged;
+    }
+
+    function getSummarySheetName(workbook) {
+      return workbook.SheetNames.find(function(name) {
+        return normalizeKey(name) === 'summarysource';
+      }) || workbook.SheetNames[0];
+    }
+
+    function rowHasData(row) {
+      return Object.values(row).some(function(value) {
+        return clean(value) !== '';
+      });
+    }
+
+    function makeGetter(row) {
+      const normalized = {};
+      Object.keys(row).forEach(function(key) {
+        normalized[normalizeKey(key)] = row[key];
+      });
+
+      return function(candidates) {
+        for (const candidate of candidates) {
+          const value = normalized[normalizeKey(candidate)];
+          if (value !== undefined && value !== null) return value;
+        }
+        return '';
+      };
+    }
+
+    function normalizeKey(value) {
+      return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function clean(value) {
+      return String(value == null ? '' : value).trim();
+    }
+
+    function lower(value) {
+      return clean(value).toLowerCase();
+    }
+
+    function phoneKey(value) {
+      const digits = clean(value).replace(/\D/g, '');
+      if (!digits) return '';
+      return digits.length > 10 ? digits.slice(-10) : digits;
+    }
+
+    function getEffectiveSummary(row) {
+      var md = clean(row.manual_disposition_detail);
+      if (md) return md;
+      var dd = clean(row.disposition_detail);
+      if (dd) return dd;
+      var us = clean(row.updated_summary);
+      if (us) return us;
+      return clean(row.summary);
+    }
+
+    function isConnected(row) {
+      return lower(row.outcome) === 'connected';
+    }
+
+    function isNotConnected(row) {
+      return lower(row.outcome) === 'not connected';
+    }
+
+    function isTestDriveBooking(row) {
+      if (lower(row.conversion) === 'yes') return true;
+      if (!isConnected(row)) return false;
+
+      const s = lower(getEffectiveSummary(row));
+      if (s.includes('follow up required') || s.includes('converted')) return true;
+      if (s.includes('not interested')) return false;
+      return s.includes('interested');
+    }
+
+    function isTestDriveCompleted(row) {
+      const s = lower(getEffectiveSummary(row));
+      return isConnected(row) && s.includes('already booked');
+    }
+
+    function hasAny(text, terms) {
+      return terms.some(function(term) { return text.includes(term); });
+    }
+
+    function detectCampaignModeFromRows(rows) {
+      if (!rows.length) return 'pre';
+      let postScore = 0;
+      let preScore = 0;
+      rows.slice(0, 300).forEach(function(row) {
+        if (clean(row.next_service_due)) postScore += 4;
+        const st = lower(row.status || '');
+        const oc = lower(row.outcome || '');
+        if (st.includes('attempted') || st.includes('completed') || st.includes('busy')) postScore += 3;
+        if (oc === 'connected' || oc === 'not connected') preScore += 3;
+        const text = lower(
+          clean(row.summary) + ' ' + clean(row.disposition) + ' ' + clean(row.updated_disposition) + ' ' + clean(row.status)
+        );
+        if (hasAny(text, ['service booked', 'service appointment', 'feedback', 'serviced', 'next service', 'complaint'])) postScore++;
+        if (hasAny(text, ['test drive', 'brochure', 'vehicle inquiry'])) preScore++;
+      });
+      return postScore > preScore ? 'post' : 'pre';
+    }
+
+    function resolveCampaignMode(selectValue, rows) {
+      if (selectValue === 'pre' || selectValue === 'post') return selectValue;
+      return detectCampaignModeFromRows(rows);
+    }
+
+    function isPostConnected(row) {
+      const st = lower(row.status || '');
+      return st.includes('attempted') || st.includes('completed');
+    }
+
+    function isPostNotConnected(row) {
+      return lower(row.status || '').includes('busy');
+    }
+
+    function hasPostVoicemail(row) {
+      return isDispositionMatch(row, POST_SALES_KPI_GROUPS["Voicemail"]);
+    }
+
+    function isPostServiceBooked(row) {
+      return isDispositionMatch(row, POST_SALES_KPI_GROUPS["Service Booked"]);
+    }
+
+    function isPostServiceCompleted(row) {
+      return isDispositionMatch(row, POST_SALES_KPI_GROUPS["Service Completed"]);
+    }
+
+    function isPostInvalidLead(row) {
+      return isDispositionMatch(row, POST_SALES_KPI_GROUPS["Invalid Lead"]);
+    }
+
+    function isPostFollowUpRequired(row) {
+      return isDispositionMatch(row, POST_SALES_KPI_GROUPS["Follow Up Required"]);
+    }
+
+    function isPostRequestedCallback(row) {
+      return isDispositionMatch(row, POST_SALES_KPI_GROUPS["Requested Callback"]);
+    }
+
+    function countPostUniqueCalls(data) {
+      const hasAttemptCol = data.some(function(r) { return clean(r.attempts) !== ''; });
+      if (hasAttemptCol) {
+        return data.filter(function(r) {
+          const a = lower(r.attempts || '');
+          return a === '1' || a === '1.0' || a === 'one';
+        }).length;
+      }
+      const seen = new Set();
+      data.forEach(function(r) {
+        const k = phoneKey(r.phone);
+        if (k) seen.add(k);
+      });
+      return seen.size;
+    }
+
+    function detectPostLocation(row) {
+      const text = lower(row.summary || '');
+      if (text.includes('jayanagar')) return 'JAYANAGAR';
+      if (text.includes('lalbagh')) return 'LALBAGH';
+      return '';
+    }
+
+    function renderSummary(data) {
+      const now = new Date();
+      const dateLabel = now.getDate() + ' ' + MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear();
+
+      const selectedMode = campaignModeSelect ? campaignModeSelect.value : 'auto';
+      const resolvedMode = resolveCampaignMode(selectedMode, data);
+      activeCampaignMode = resolvedMode;
+      if (campaignModeSelect && selectedMode === 'auto') {
+        campaignModeSelect.value = resolvedMode;
+      }
+
+      const modeLabel = resolvedMode === 'post' ? 'Post-Sales' : 'Pre-Sales';
+      summaryTitleText = dateLabel + ' \u2014 Call Analysis Summary (' + modeLabel + ')';
+
+      const total = data.length;
+
+      if (resolvedMode === 'post') {
+        var dealerSelect = document.getElementById('dealerSelectCallAnalysis');
+        var dealerName = dealerSelect ? (DEALER_NAMES[dealerSelect.value] || '') : '';
+        const connected = data.filter(isPostConnected).length;
+        const notConnectedCalls = data.filter(isPostNotConnected).length;
+        const voicemail = data.filter(hasPostVoicemail).length;
+        const uniqueCalls = countPostUniqueCalls(data);
+        const serviceBooked = data.filter(isPostServiceBooked).length;
+        const serviceCompleted = data.filter(isPostServiceCompleted).length;
+        const invalidLead = data.filter(isPostInvalidLead).length;
+        const requestedCallbacks = data.filter(isPostRequestedCallback).length;
+        const followUpRequired = data.filter(isPostFollowUpRequired).length;
+
+        summaryTitleText = dateLabel + ' \u2014 Call Analysis Summary (' + modeLabel + ')' + (dealerName ? ' ' + dealerName : '');
+        summaryItems = [
+          { label: 'Total Calls Triggered', val: total, cls: 'purple', sub: 'Imported records' },
+          { label: 'Connected Calls', val: connected, cls: 'green', sub: 'STATUS: attempted / completed' },
+          { label: 'Not Connected Calls', val: notConnectedCalls, cls: 'red', sub: 'STATUS: busy' },
+          { label: 'Voicemail', val: voicemail, cls: 'amber', sub: 'Exact disposition match: Voicemail' },
+          { label: 'Unique Calls', val: uniqueCalls, cls: 'amber', sub: 'Attempt = 1 if column exists, else unique phones' },
+          { label: 'Service Booked', val: serviceBooked, cls: 'green', sub: 'Exact disposition match: Converted' },
+          { label: 'Service Completed', val: serviceCompleted, cls: 'teal', sub: 'Exact disposition match: Has serviced car / Existing Dealer Contact' },
+          { label: 'Invalid Lead', val: invalidLead, cls: 'red', sub: 'Exact disposition match: Invalid Lead / Not Interested / Rejected' },
+          { label: 'Requested Call Back', val: requestedCallbacks, cls: 'teal', sub: 'Exact disposition match: Requested Callback' },
+          { label: 'Follow Up Required', val: followUpRequired, cls: 'amber', sub: 'Exact disposition match: Showroom Visit Planned / Will call workshop / Will decide / Talk to Human' }
+        ];
+
+        document.getElementById('summaryTitle').innerHTML = escapeHtml(dateLabel) + (dealerName ? ' ' + escapeHtml(dealerName) : '') + ' <span>Call Analysis Summary</span>';
+        document.getElementById('summaryGrid').innerHTML = summaryItems.map(function(item, index) {
+          return '<div class="kpi-card ' + item.cls + ' slide-up stagger-' + Math.min(index + 1, 7) + '">' +
+            '<div><span class="kpi-dot"></span></div>' +
+            '<div class="kpi-value">' + item.val + '</div>' +
+            '<div class="kpi-label">' + escapeHtml(item.label) + '</div>' +
+            '<div class="kpi-sub">' + escapeHtml(item.sub) + '</div>' +
+            '</div>';
+        }).join('');
+
+        document.getElementById('summaryBar').style.display = 'flex';
+        document.getElementById('summaryPanel').classList.add('show');
+        document.getElementById('emptyPanel').style.display = 'none';
+        renderRuleAudit([
+          { label: 'Connected Calls', count: connected, detail: 'STATUS contains attempted or completed (matches Dashboard post-sales).' },
+          { label: 'Not Connected Calls', count: notConnectedCalls, detail: 'STATUS contains busy.' },
+          { label: 'Voicemail', count: voicemail, detail: 'Exact disposition match against POST_SALES_DISPOSITIONS.' },
+          { label: 'Unique Calls', count: uniqueCalls, detail: 'Same as Dashboard: NUMBER OF ATTEMPTS = 1 when present; otherwise distinct phone numbers.' },
+          { label: 'Service Booked', count: serviceBooked, detail: 'Exact disposition match: Converted.' },
+          { label: 'Service Completed', count: serviceCompleted, detail: 'Exact disposition match: Has serviced car in another dealership / Existing Dealer Contact.' },
+          { label: 'Invalid Lead', count: invalidLead, detail: 'Exact disposition match: Invalid Lead / Not Interested / Rejected.' },
+          { label: 'Requested Call Back', count: requestedCallbacks, detail: 'Exact disposition match: Requested Callback.' },
+          { label: 'Follow Up Required', count: followUpRequired, detail: 'Exact disposition match: Showroom Visit Planned / Will call workshop themselves / Service Postponed / Will decide (all) / Talk to Human.' }
+        ]);
+        renderPreviewTables(data);
+        return;
+      }
+
+      const connected = data.filter(isConnected).length;
+      const bookings = data.filter(isTestDriveBooking).length;
+      const followUps = data.filter(function(row) {
+        var s = lower(getEffectiveSummary(row));
+        if (s.includes('interested') && !s.includes('not interested')) return true;
+        if (s.includes('follow up')) return true;
+        return s.includes('converted');
+      }).length;
+      const requestedCallbacks = data.filter(function(row) {
+        const d = lower(row.disposition);
+        const s = lower(getEffectiveSummary(row));
+        const ss = lower(row.session_summary);
+        return d.includes('call back') || d.includes('callback') || d.includes('call later') ||
+          s.includes('requested call back') || s.includes('callback requested') || s.includes('requested callback') ||
+          ss.includes('requested call back') || ss.includes('callback requested') || ss.includes('requested callback');
+      }).length;
+      const interested = data.filter(function(row) {
+        if (!isConnected(row)) return false;
+        const s = lower(getEffectiveSummary(row));
+        return s.includes('interested') && !s.includes('not interested');
+      }).length;
+      const testDriveCompleted = data.filter(isTestDriveCompleted).length;
+      const notConnectedCalls = data.filter(isNotConnected).length;
+
+      summaryTitleText = dateLabel + ' \u2014 Call Analysis Summary (' + modeLabel + ')';
+      summaryItems = [
+        { label: 'Total Calls Triggered', val: total, cls: 'purple', sub: 'Imported records' },
+        { label: 'Connected Calls', val: connected, cls: 'green', sub: 'Outcome based' },
+        { label: 'Test Drive Bookings', val: bookings, cls: 'green', sub: 'Summary based' },
+        { label: 'Follow Up Required', val: followUps, cls: 'amber', sub: 'Summary based' },
+        { label: 'Interested', val: interested, cls: 'amber', sub: 'Summary based' },
+        { label: 'Requested Call Back', val: requestedCallbacks, cls: 'teal', sub: 'Disposition + summary' },
+        { label: 'Test Drive Completed', val: testDriveCompleted, cls: 'blue', sub: 'Summary based' },
+        { label: 'Not Connected Calls', val: notConnectedCalls, cls: 'red', sub: 'Outcome based' }
+      ];
+
+      document.getElementById('summaryTitle').innerHTML = escapeHtml(dateLabel) + ' <span>Call Analysis Summary</span>';
+      document.getElementById('summaryGrid').innerHTML = summaryItems.map(function(item, index) {
+        return '<div class="kpi-card ' + item.cls + ' slide-up stagger-' + Math.min(index + 1, 7) + '">' +
+          '<div><span class="kpi-dot"></span></div>' +
+          '<div class="kpi-value">' + item.val + '</div>' +
+          '<div class="kpi-label">' + escapeHtml(item.label) + '</div>' +
+          '<div class="kpi-sub">' + escapeHtml(item.sub) + '</div>' +
+          '</div>';
+      }).join('');
+
+      document.getElementById('summaryBar').style.display = 'flex';
+      document.getElementById('summaryPanel').classList.add('show');
+      document.getElementById('emptyPanel').style.display = 'none';
+      renderRuleAudit([
+        { label: 'Connected Calls', count: connected, detail: 'Outcome exactly equals Connected.' },
+        { label: 'Test Drive Bookings', count: bookings, detail: 'Connected rows where effective summary contains converted, interested, booked, location confirmed, or similar booking language.' },
+        { label: 'Follow Up Required', count: followUps, detail: 'Updated Summary contains interested or follow up, or Summary contains follow up.' },
+        { label: 'Interested', count: interested, detail: 'Connected rows where effective summary contains interested but not not interested.' },
+        { label: 'Requested Call Back', count: requestedCallbacks, detail: 'Disposition, Summary, or Session Summary contains callback or call later language.' },
+        { label: 'Test Drive Completed', count: testDriveCompleted, detail: 'Connected rows where effective summary contains already booked.' },
+        { label: 'Not Connected Calls', count: notConnectedCalls, detail: 'Outcome exactly equals Not Connected.' },
+      ]);
+      renderPreviewTables(data);
+    }
+
+    function renderRuleAudit(rules) {
+      const panel = document.getElementById('ruleAudit');
+      const grid = document.getElementById('ruleGrid');
+      if (!panel || !grid) return;
+      grid.innerHTML = rules.map(function(rule) {
+        return '<div class="rule-item">' +
+          '<div class="rule-item-title"><span>' + escapeHtml(rule.label) + '</span><span class="rule-item-count">' + escapeHtml(rule.count) + '</span></div>' +
+          '<div class="rule-item-detail">' + escapeHtml(rule.detail) + '</div>' +
+          '</div>';
+      }).join('');
+      panel.classList.add('show');
+    }
+
+    function renderPreviewTables(data) {
+      renderBookingTable(data);
+      renderCompletedTable(data);
+      const bookingTitle = document.getElementById('bookingPreviewTitle');
+      const completedTitle = document.getElementById('completedPreviewTitle');
+      const btnBook = document.getElementById('btnCopyBookings');
+      const btnDone = document.getElementById('btnCopyCompleted');
+      if (activeCampaignMode === 'post') {
+        if (bookingTitle) bookingTitle.textContent = 'Service Booked Preview';
+        if (completedTitle) completedTitle.textContent = 'Service Completed Preview';
+        if (btnBook) btnBook.textContent = 'Copy Service Booked';
+        if (btnDone) btnDone.textContent = 'Copy Service Completed';
+      } else {
+        if (bookingTitle) bookingTitle.textContent = 'Test Drive Bookings Preview';
+        if (completedTitle) completedTitle.textContent = 'Test Drive Completed Preview';
+        if (btnBook) btnBook.textContent = 'Copy Bookings';
+        if (btnDone) btnDone.textContent = 'Copy Completed';
+      }
+    }
+
+    function renderBookingTable(data) {
+      const isPost = activeCampaignMode === 'post';
+      bookingPreviewData = data.filter(isPost ? isPostServiceBooked : isTestDriveBooking);
+      const wrapper = document.getElementById('bookingTableWrapper');
+      const tbody = document.getElementById('bookingBody');
+      tbody.innerHTML = '';
+
+      if (!bookingPreviewData.length) {
+        wrapper.style.display = 'none';
+        document.getElementById('bookingPreviewCount').textContent = '0 rows';
+        return;
+      }
+
+      bookingPreviewData.forEach(function(row) {
+        const cols = isPost ? getBookingColumnsPost(row) : getBookingColumns(row);
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="cell-phone">' + escapeHtml(cols[0]) + '</td>' +
+          '<td>' + escapeHtml(cols[1]) + '</td>' +
+          '<td class="cell-detail">' + escapeHtml(cols[2]) + '</td>' +
+          '<td>' + escapeHtml(cols[3]) + '</td>' +
+          '<td>' + escapeHtml(cols[4]) + '</td>';
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('bookingPreviewCount').textContent = rowCountLabel(bookingPreviewData.length);
+      wrapper.style.display = 'block';
+      wrapper.classList.add('fade-in');
+    }
+
+    function renderCompletedTable(data) {
+      const isPost = activeCampaignMode === 'post';
+      completedPreviewData = data.filter(isPost ? isPostServiceCompleted : isTestDriveCompleted);
+      const wrapper = document.getElementById('completedTableWrapper');
+      const tbody = document.getElementById('completedBody');
+      tbody.innerHTML = '';
+
+      if (!completedPreviewData.length) {
+        wrapper.style.display = 'none';
+        document.getElementById('completedPreviewCount').textContent = '0 rows';
+        return;
+      }
+
+      completedPreviewData.forEach(function(row) {
+        const cols = isPost ? getCompletedColumnsPost(row) : getCompletedColumns(row);
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="cell-phone">' + escapeHtml(cols[0]) + '</td>' +
+          '<td>' + escapeHtml(cols[1]) + '</td>' +
+          '<td>' + escapeHtml(cols[2]) + '</td>' +
+          '<td class="cell-detail">' + escapeHtml(cols[3]) + '</td>';
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('completedPreviewCount').textContent = rowCountLabel(completedPreviewData.length);
+      wrapper.style.display = 'block';
+      wrapper.classList.add('fade-in');
+    }
+
+    function getBookingColumns(row) {
+      return [
+        row.phone,
+        row.model,
+        getBookingDisposition(row),
+        detectBookingLocation(row),
+        row.call_date
+      ];
+    }
+
+    function getCompletedColumns(row) {
+      return [
+        row.phone,
+        row.model,
+        row.call_date,
+        getEffectiveSummary(row)
+      ];
+    }
+
+    function getBookingDisposition(row) {
+      const disp = clean(row.disposition);
+      if (lower(disp).includes('converted') || (!disp && lower(row.conversion) === 'yes')) {
+        return 'Test Drive Booked';
+      }
+      return disp;
+    }
+
+    function getBookingColumnsPost(row) {
+      var disp = clean(row.updated_disposition) || clean(row.disposition);
+      if (disp === 'Converted') {
+        disp = 'Service Booked';
+      }
+      return [
+        row.phone,
+        row.model,
+        disp,
+        detectPostLocation(row),
+        row.call_date
+      ];
+    }
+
+    function getCompletedColumnsPost(row) {
+      return [
+        row.phone,
+        row.model,
+        row.call_date,
+        clean(row.updated_disposition) || clean(row.disposition)
+      ];
+    }
+
+    function detectBookingLocation(row) {
+      const text = lower(row.session_summary);
+      if (text.includes('bannerghatta road') || text.includes('bannerghatta')) return 'Bannerghatta Road';
+      if (text.includes('mysore rd') || text.includes('mysore road')) return 'Mysore Rd';
+      if (text.includes('ramanagara')) return 'Ramanagara';
+      if (text.includes('marathahalli')) return 'Marathahalli';
+      if (text.includes('kr puram') || text.includes('k r puram')) return 'KR Puram';
+      return '';
+    }
+
+    function rowCountLabel(count) {
+      return count + (count === 1 ? ' row' : ' rows');
+    }
+
+    function hidePreviewTables() {
+      bookingPreviewData = [];
+      completedPreviewData = [];
+      const ruleAudit = document.getElementById('ruleAudit');
+      const ruleGrid = document.getElementById('ruleGrid');
+      if (ruleAudit) ruleAudit.classList.remove('show');
+      if (ruleGrid) ruleGrid.innerHTML = '';
+      const bookingWrapper = document.getElementById('bookingTableWrapper');
+      const completedWrapper = document.getElementById('completedTableWrapper');
+      if (bookingWrapper) bookingWrapper.style.display = 'none';
+      if (completedWrapper) completedWrapper.style.display = 'none';
+      const bookingBody = document.getElementById('bookingBody');
+      const completedBody = document.getElementById('completedBody');
+      if (bookingBody) bookingBody.innerHTML = '';
+      if (completedBody) completedBody.innerHTML = '';
+      const bookingCount = document.getElementById('bookingPreviewCount');
+      const completedCount = document.getElementById('completedPreviewCount');
+      if (bookingCount) bookingCount.textContent = '0 rows';
+      if (completedCount) completedCount.textContent = '0 rows';
+    }
+
+    async function copyBookingData() {
+      if (!bookingPreviewData.length) return;
+      const colsFn = activeCampaignMode === 'post' ? getBookingColumnsPost : getBookingColumns;
+      const btnLabel = activeCampaignMode === 'post' ? 'Copy Service Booked' : 'Copy Bookings';
+      await copyPreviewRows(bookingPreviewData.map(colsFn), 'btnCopyBookings', btnLabel);
+    }
+
+    async function copyCompletedData() {
+      if (!completedPreviewData.length) return;
+      const colsFn = activeCampaignMode === 'post' ? getCompletedColumnsPost : getCompletedColumns;
+      const btnLabel = activeCampaignMode === 'post' ? 'Copy Service Completed' : 'Copy Completed';
+      await copyPreviewRows(completedPreviewData.map(colsFn), 'btnCopyCompleted', btnLabel);
+    }
+
+    async function copyPreviewRows(rows, buttonId, defaultLabel) {
+      const tsv = rows.map(function(cols) {
+        return cols.map(toTsvCell).join('\t');
+      }).join('\n');
+
+      try {
+        await copyText(tsv);
+        const btn = document.getElementById(buttonId);
+        btn.textContent = 'Copied';
+        setTimeout(function() {
+          btn.textContent = defaultLabel;
+        }, 1600);
+      } catch (error) {
+        setStatus('Copy failed. Select the preview table and copy manually.', 'err');
+      }
+    }
+
+    function toTsvCell(value) {
+      return String(value == null ? '' : value).replace(/\t/g, ' ').replace(/\r?\n/g, ' ');
+    }
+
+    async function copySummaryText() {
+      if (!summaryItems.length) return;
+      const lines = [summaryTitleText, ''].concat(summaryItems.map(function(item) {
+        return item.label + ' \u2014 ' + item.val;
+      }));
+      const text = lines.join('\n');
+
+      try {
+        await copyText(text);
+        const btn = document.getElementById('copyBtn');
+        const oldText = btn.innerHTML;
+        btn.textContent = 'Copied';
+        setTimeout(function() {
+          btn.innerHTML = oldText;
+        }, 1600);
+      } catch (error) {
+        setStatus('Copy failed. Select the summary and copy manually.', 'err');
+      }
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (!ok) throw new Error('Copy command failed.');
+    }
+
+    function escapeHtml(value) {
+      return clean(value).replace(/[&<>"']/g, function(char) {
+        return {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        }[char];
+      });
+    }
+
+    function setStatus(message, type) {
+      const el = document.getElementById('statusText');
+      el.textContent = message;
+      el.className = 'dz-status' + (type ? ' ' + type : '');
+    }
+
+    function getStoredTheme() {
+      return localStorage.getItem('jejo-theme') || 'dark';
+    }
+
+    function syncBrandLogo(theme) {
+      document.querySelectorAll('.brand-mark img').forEach(img => {
+        img.src = theme === 'dark' ? img.dataset.darkLogo : img.dataset.lightLogo;
+      });
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('jejo-theme', theme);
+      syncBrandLogo(theme);
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || getStoredTheme();
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
+    applyTheme(getStoredTheme());
+  </script>
+</body>
+
+</html>

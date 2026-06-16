@@ -1,0 +1,73 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: true
+    steps:
+      - name: Checkout original repo (staging branch)
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+          path: original
+
+      - name: Setup staging repo (handles empty repos)
+        env:
+          TOKEN: ${{ secrets.STAGING_PAT }}
+        run: |
+          REPO_URL="https://x-access-token:${TOKEN}@github.com/jennyjoseph7/Mastersheetupdater-staging.git"
+
+          # Try to clone the staging repo. If it's empty (no commits yet),
+          # init a fresh git repo and push an initial commit.
+          git clone --depth 1 --branch main $REPO_URL staging-deploy 2>/dev/null || {
+            echo "Staging repo is empty — initializing..."
+            rm -rf staging-deploy
+            mkdir -p staging-deploy
+            cd staging-deploy
+            git init -b main
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git remote add origin $REPO_URL
+            git commit --allow-empty -m "Initial commit"
+            git push -u origin main
+          }
+
+      - name: Copy files and push to staging
+        run: |
+          # Sync all files from original to staging checkout
+          rsync -av --delete \
+            --exclude='.git' \
+            ./original/ ./staging-deploy/
+
+          cd staging-deploy
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Only commit if there are changes
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Deploy staging $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            git push origin main
+            echo "DEPLOYED=true" >> $GITHUB_ENV
+          else
+            echo "No changes to deploy"
+            echo "DEPLOYED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Print staging URL
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║  Staging deployed!                                     ║"
+          echo "║                                                        ║"
+          echo "║  https://${OWNER}.github.io/Mastersheetupdater-staging/ ║"
+          echo "║                                                        ║"
+          echo "║  (Enable Pages: staging repo → Settings → Pages)       ║"
+          echo "╚══════════════════════════════════════════════════════════╝"

@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+  
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://autobot-webapp-dev.gryd.in http://localhost:3456; form-action 'self'; base-uri 'self'; object-src 'none'; " />
+  <script>
+    (function () {
+      var theme = localStorage.getItem('jejo-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <script>
+    (function() {
+      function requireAuth() {
+        var token = sessionStorage.getItem('gryd_token');
+        var expiry = sessionStorage.getItem('gryd_expiry');
+        if (!token || !expiry || parseInt(expiry) <= Math.floor(Date.now() / 1000)) {
+          window.location.replace('../login.html');
+          return false;
+        }
+        return true;
+      }
+      requireAuth();
+      window.addEventListener('pageshow', function() { requireAuth(); });
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') requireAuth();
+      });
+      window.addEventListener('unload', function() {});
+    })();
+  </script>
+  <title>AutoEngage Formatter - AutoNage</title>
+  <meta name="description"
+    content="Convert dealership files into AutoEngage upload format using predefined column mappings." />
+  <link rel="stylesheet" href="../assets/fonts/fonts.css" />
+  <script src="../assets/js/lib/ai-config.js?v=20260613"></script>
+  <script src="../assets/js/vendor/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="../assets/styles/autongage-formatter.css" />
+</head>
+
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="header-left">
+        <a class="brand-mark" href="../index.html" aria-label="Go to home"><img src="../assets/images/AN Dark.png" data-light-logo="../assets/images/AN.png" data-dark-logo="../assets/images/AN Dark.png" alt="AutoNage"></a>
+        <div class="header-title-group">
+          <h1>AutoEngage Formatter</h1>
+          <div class="header-sub">Client file -> AutoEngage upload schema</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="navContainer"></div>
+<script>loadNavSafe("navContainer");</script>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+          <svg class="icon-moon" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+          <svg class="icon-sun" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="section-title">Step 1 - Template and file</div>
+      <div class="step-note">1) Choose template 2) Click Upload Sheet 3) Click Format File</div>
+      <div class="controls">
+        <select class="select" id="templateSelect"></select>
+        <button type="button" class="btn btn-upload" id="uploadBtn">Upload Sheet</button>
+        <button class="btn btn-primary" id="processBtn" onclick="processFile()" disabled>Format File</button>
+        <button class="btn btn-secondary" id="downloadBtn" onclick="void downloadOutput()" disabled>Export Batches</button>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="upload-row">
+          <div>
+            <div class="dz-label">Upload client CSV/XLSX</div>
+            <div class="dz-sub">Use Upload Sheet button above, or drag and drop file into this area.</div>
+          </div>
+        </div>
+        <div class="status" id="fileStatus">No file selected</div>
+        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" />
+      </div>
+
+      <div class="hint mono" id="mappingHint"></div>
+      <div class="status" id="globalStatus"></div>
+
+      <div class="batch-panel" id="batchPanel" aria-live="polite">
+        <div class="batch-panel-title">Batch download</div>
+        <div class="batch-panel-note">
+          Each upload file uses a <strong>header row</strong> plus up to <strong>100 leads</strong> per batch
+          (<strong>101 rows</strong> when a batch is full). Choose where to start and how many batches to download.
+        </div>
+        <div class="resume-banner" id="resumeBanner"></div>
+        <div class="resume-actions" id="resumeActions" style="display:none;">
+          <button type="button" class="btn btn-primary" id="resumeContinueBtn">Continue from saved position</button>
+          <button type="button" class="btn btn-secondary" id="resumeRestartBtn">Start from lead 1</button>
+        </div>
+        <div class="batch-row">
+          <div class="batch-field">
+            <label for="startLeadInput">Start at lead #</label>
+            <input type="number" id="startLeadInput" min="1" value="1" />
+          </div>
+          <div class="batch-field">
+            <label for="numBatchesInput">Batches to download</label>
+            <input type="number" id="numBatchesInput" min="1" value="1" />
+          </div>
+        </div>
+        <div class="batch-hint mono" id="batchHint"></div>
+        <button type="button" class="batch-forget" id="clearBatchMemoryBtn">Forget saved progress for this file</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">Step 2 - Output preview</div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label">Input Rows</div>
+          <div class="stat-value" id="inputRows">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Output Rows</div>
+          <div class="stat-value" id="outputRows">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Mapped Cells</div>
+          <div class="stat-value" id="mappedCells">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Default Cells</div>
+          <div class="stat-value" id="defaultCells">0</div>
+        </div>
+      </div>
+      <div class="audit-card" id="auditCard">
+        <div class="audit-title" id="auditTitle">Mapping audit</div>
+        <div class="audit-grid" id="auditGrid"></div>
+      </div>
+      <div class="table-wrap" id="tableWrap">
+        <div class="table-scroll">
+          <table>
+            <thead id="previewHead"></thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>AutoNage - AutoEngage Formatter</footer>
+
+  <script>
+    const TEMPLATES = {
+      bullmenn_service: {
+        label: 'Bullmenn - Service Reminder',
+        sourceToTarget: {
+          'Sale Date': 'purchase_date',
+          'Dealer': 'workshop_code',
+          'Phone No': 'phone_number',
+          'Model': 'vehicle_model',
+          'Chassis No': 'vin_number',
+          'Sales Customer Name': 'person_name',
+          'Vehicle Number': 'reg_number',
+          'Last Service Date': 'last_service_date',
+          'Service Due Date': 'next_service_due'
+        },
+        outputOrder: ['workshop_code', 'purchase_date', 'vin_number', 'next_service_due', 'person_name', 'vehicle_model', 'reg_number', 'phone_number', 'alt_phone_number_2', 'last_service_date'],
+        defaults: {}
+      },
+      ambal_erode_service: {
+        label: 'Ambal ERODE - Service Reminder',
+        sourceToTarget: {
+          'Dealer Code': 'workshop_code',
+          'VIN': 'vin_number',
+          'Due Date': 'next_service_due',
+          'Cust. Name': 'person_name',
+          'Model Name': 'vehicle_model',
+          'Registration Num': 'reg_number',
+          'Customer Mobile No.': 'phone_number',
+          'Last Scheduled Service KM': 'odometer_reading',
+          'Last Scheduled Service Date': 'last_service_date',
+          'Current Loyalty Points': 'customer_score'
+        },
+        outputOrder: ['workshop_code', 'vin_number', 'next_service_due', 'person_name', 'vehicle_model', 'reg_number', 'phone_number', 'alt_phone_number_2', 'odometer_reading', 'last_service_date', 'customer_score', 'purpose_of_visit'],
+        defaults: { purpose_of_visit: 'yearly service' }
+      },
+      ambal_saibaba_service: {
+        label: 'Ambal SAIBABA - Service Reminder',
+        sourceToTarget: {
+          'Dealer Code': 'workshop_code',
+          'VIN': 'vin_number',
+          'Due Date': 'next_service_due',
+          'Cust. Name': 'person_name',
+          'Model Name': 'vehicle_model',
+          'Registration Num': 'reg_number',
+          'Mobile Number': 'phone_number',
+          'Last Scheduled Service KM': 'odometer_reading',
+          'Last Scheduled Service Date': 'last_service_date',
+          'Current Loyalty Points': 'customer_score'
+        },
+        outputOrder: ['workshop_code', 'vin_number', 'next_service_due', 'person_name', 'vehicle_model', 'reg_number', 'phone_number', 'alt_phone_number_2', 'odometer_reading', 'last_service_date', 'customer_score', 'purpose_of_visit'],
+        defaults: { purpose_of_visit: 'yearly service' }
+      },
+      suryabala_service: {
+        label: 'SURYABALA - Service Reminder',
+        sourceToTarget: {
+          'Customer Name': 'person_name',
+          'Contact Number': 'phone_number',
+          'Model Name': 'vehicle_model',
+          'Registration No.': 'reg_number',
+          'Next Service Type': 'service_type',
+          'Next Service Date': 'next_service_due',
+          'Frame #': 'vin_number'
+        },
+        outputOrder: ['person_name', 'phone_number', 'vehicle_model', 'reg_number', 'service_type', 'next_service_due', 'vin_number'],
+        defaults: {}
+      },
+      icare_feedback: {
+        label: 'ICARE - Post Service Feedback',
+        sourceToTarget: {
+          'Location Name': 'showroom_code',
+          'Bill No': 'lead_tags',
+          'Customer': 'person_name',
+          'Mobile No': 'phone_number'
+        },
+        multiSource: {
+          lead_tags: ['Bill Number', 'Bill', 'Invoice No'],
+          phone_number: ['Mobile Number', 'Phone', 'Contact Number', 'Customer Mobile']
+        },
+        outputOrder: ['showroom_code', 'person_name', 'phone_number', 'lead_tags'],
+        defaults: {}
+      },
+      anant_sales: {
+        label: 'Anant Cars - Sales / Lead Campaign',
+        sourceToTarget: {
+          'Customer Name': 'person_name',
+          'Customer Phone': 'phone_number',
+          'Product Family': 'interested_vehicle_name'
+        },
+        multiSource: {
+          phone_number: ['Customer Mobile', 'Mobile', 'Phone', 'Mobile Number', 'PHONE NUMBER', 'PHONE NO', 'CONTACT NUMBER', 'CONTACT NO'],
+          interested_vehicle_name: ['Vehicle Model', 'MODEL', 'Product', 'Interested Vehicle', 'VARIANT']
+        },
+        outputOrder: ['showroom_code', 'region_name', 'dealership_id', 'person_name', 'phone_number', 'interested_vehicle_name', 'interested_vehicle_brand_name', 'seating_capacity_preference', 'city', 'pincode', 'subdivision_name', 'alt_phone_number_2', 'lead_source'],
+        defaults: { interested_vehicle_brand_name: 'Mahindra' },
+        normalizeMahindraModels: true
+      },
+      singhal_sales: {
+        label: 'Singhal - Sales / Lead Campaign',
+        sourceToTarget: {
+          'CUSTOMER NAME': 'person_name',
+          'MOBILE NUMBER': 'phone_number',
+          'MODEL': 'interested_vehicle_name',
+          'ADDRESS': 'city'
+        },
+        multiSource: {
+          person_name: ['CUSTOMER NAME', 'Customer Name', 'CUSTOMERNAME', 'NAME', 'Full Name', 'CUSTOMER NAME'],
+          phone_number: ['MOBILE NUMBER', 'Mobile Number', 'PHONE', 'CONTACT NUMBER', 'MOBILE', 'MOBILE NO', 'CONTACT'],
+          interested_vehicle_name: ['MODEL', 'Model', 'VEHICLE MODEL', 'CAR MODEL', 'MODEL NAME'],
+          city: ['ADDRESS', 'Address', 'CITY', 'City', 'LOCATION']
+        },
+        outputOrder: ['person_name', 'phone_number', 'interested_vehicle_name', 'interested_vehicle_brand_name', 'seating_capacity_preference', 'city'],
+        defaults: { interested_vehicle_brand_name: 'Volkswagen' }
+      },
+      fortune_hyryder_sales: {
+        label: 'Fortune Hyryder - Sales / Lead Campaign',
+        sourceToTarget: {
+          'Enquiry Name': 'person_name',
+          'MODEL': 'interested_vehicle_name',
+          'Contact Number': 'phone_number'
+        },
+        multiSource: {
+          showroom_code: ['Showroom', 'SHOWROOM', 'Branch', 'BRANCH CODE', 'Location Name', 'DEALER CODE'],
+          person_name: ['NAMES', 'CUSTOMER NAME', 'CUSTOMERNAME', 'CUSTOMER_NAME', 'ENQUIRY NAME'],
+          phone_number: ['MOBILE NO', 'MOBILE NUMBER', 'MOBILENUMBER', 'MOBILE', 'PHONE NUMBER', 'CONTACT NUMBER', 'CONTACT NO'],
+          interested_vehicle_name: ['Model', 'VEHICLE MODEL', 'INTERESTED VEHICLE', 'MODEL NAME']
+        },
+        outputOrder: ['showroom_code', 'person_name', 'phone_number', 'interested_vehicle_name', 'interested_vehicle_brand_name'],
+        defaults: {
+          interested_vehicle_name: 'Urban Cruiser Hyryder',
+          interested_vehicle_brand_name: 'Toyota Kirloskar Motor'
+        }
+      },
+      fortune_toyota_post: {
+        label: 'Fortune Toyota - Post Sales / Service Reminder',
+        sourceToTarget: {
+          'Service Due Date': 'next_service_due',
+          'Workshop': 'workshop_code',
+          'Predicted Service Type': 'service_plan_type',
+          'Customer Name': 'person_name',
+          'Contact Number': 'phone_number',
+          'Reg No.': 'reg_number',
+          'VIN No.': 'vin_number',
+          'Model': 'vehicle_model',
+          'Sale Date': 'purchase_date'
+        },
+        multiSource: {
+          next_service_due: ['Service Due', 'Next Service Date', 'NEXT_SERVICE_DUE', 'SERVICE DUE DATE'],
+          workshop_code: ['Workshop Code', 'BRANCH', 'Dealer Code', 'WORKSHOP'],
+          service_plan_type: ['Predicted Service Type', 'Service Plan Type', 'SERVICE_PLAN_TYPE', 'SERVICE TYPE', 'PREDICTED SERVICE TYPE'],
+          phone_number: ['Mobile No', 'Mobile Number', 'MOBILE', 'Phone', 'Customer Mobile', 'CONTACT NUMBER', 'CONTACT NO'],
+          reg_number: ['Reg No', 'Registration No', 'Registration Number', 'REG NUMBER', 'VEHICLE NUMBER'],
+          vin_number: ['VIN', 'VIN Number', 'Chassis No', 'Chassis Number', 'Frame #', 'CHASSIS NO', 'VIN NO'],
+          vehicle_model: ['MODEL', 'Vehicle Model', 'Model Name', 'VEHICLE MODEL'],
+          purchase_date: ['Purchase Date', 'Sales Date', 'SALE DATE'],
+          person_name: ['Customer Name', 'CUST NAME', 'CLIENT NAME', 'CUSTOMER NAME']
+        },
+        outputOrder: ['next_service_due', 'workshop_code', 'service_plan_type', 'person_name', 'phone_number', 'reg_number', 'vin_number', 'vehicle_model', 'purchase_date'],
+        defaults: {},
+        normalizeToyotaModels: true
+      }
+    };
+
+    /** AN_format.md — Fortune Toyota post-sales model names → vehicle_model */
+    function normalizeToyotaVehicleModel(raw) {
+      const orig = String(raw || '').trim();
+      if (!orig) return '';
+      const s = orig.toLowerCase().replace(/\s+/g, ' ');
+      const rules = [
+        ['glanza', 'Glanza'],
+        ['urban cruiser taisor', 'Urban Cruiser Taisor'],
+        ['urban cruiser hyryder hybrid', 'Urban Cruiser Hyryder Hybrid'],
+        ['urban cruiser hyryder', 'Urban Cruiser Hyryder'],
+        ['innova hycross hybrid', 'Innova Hycross Hybrid'],
+        ['innova hycross', 'Innova Hycross'],
+        ['innova crysta', 'Innova Crysta'],
+        ['fortuner legender', 'Fortuner Legender'],
+        ['fortuner', 'Fortuner'],
+        ['camry hybrid', 'Camry Hybrid'],
+        ['camry', 'Camry'],
+        ['hilux', 'Hilux'],
+        ['vellfire', 'Vellfire'],
+        ['etios liva', 'Etios Liva'],
+        ['etios', 'Etios'],
+        ['corolla altis', 'Corolla Altis']
+      ];
+      for (let i = 0; i < rules.length; i++) {
+        const needle = rules[i][0];
+        if (s === needle || s.includes(needle)) return rules[i][1];
+      }
+      return orig;
+    }
+
+    /** AN_format.md §6 — Anant Cars Product Family → interested_vehicle_name */
+    function normalizeMahindraVehicleName(raw) {
+      const orig = String(raw || '').trim();
+      if (!orig) return '';
+      const s = orig.toLowerCase().replace(/\s+/g, ' ');
+      const rules = [
+        ['xuv 3xo ev', 'XUV 3XO EV'],
+        ['xuv3xo ev', 'XUV 3XO EV'],
+        ['xev 9s', 'XEV 9S'],
+        ['xev9s', 'XEV 9S'],
+        ['xev 9e', 'XEV 9e'],
+        ['xev9e', 'XEV 9e'],
+        ['be 6', 'BE 6'],
+        ['be6', 'BE 6'],
+        ['thar roxx', 'Thar ROXX'],
+        ['bolero neo', 'Bolero Neo'],
+        ['scorpio n', 'Scorpio-N'],
+        ['scorpio-n', 'Scorpio-N'],
+        ['scorpio classic', 'Scorpio Classic'],
+        ['xuv400 ev', 'XUV400 EV'],
+        ['xuv700', 'XUV700'],
+        ['xuv 700', 'XUV700'],
+        ['xuv 7xo', 'XUV 7XO'],
+        ['xuv300', 'XUV300'],
+        ['xuv 300', 'XUV300'],
+        ['xuv 3xo', 'XUV 3XO'],
+        ['xuv3xo', 'XUV 3XO'],
+        ['marazzo', 'Marazzo'],
+        ['bolero', 'Bolero'],
+        ['thar', 'Thar'],
+        ['udo', 'UDO']
+      ];
+      for (let i = 0; i < rules.length; i++) {
+        const needle = rules[i][0];
+        if (s === needle || s.includes(needle)) return rules[i][1];
+      }
+      return orig;
+    }
+
+    function buildTargetSources(template) {
+      const m = {};
+      function add(target, sourceLabel) {
+        const ck = normalizeHeader(sourceLabel);
+        if (!ck) return;
+        if (!m[target]) m[target] = [];
+        if (m[target].indexOf(ck) === -1) m[target].push(ck);
+      }
+      for (const [src, target] of Object.entries(template.sourceToTarget || {})) {
+        add(target, src);
+      }
+      if (template.multiSource) {
+        for (const [target, list] of Object.entries(template.multiSource)) {
+          for (let i = 0; i < list.length; i++) add(target, list[i]);
+        }
+      }
+      return m;
+    }
+
+    function firstMappedCell(inputRow, canonicalKeys) {
+      if (!canonicalKeys || !canonicalKeys.length) return '';
+      for (let i = 0; i < canonicalKeys.length; i++) {
+        const ck = canonicalKeys[i];
+        const v = inputRow[ck];
+        if (v !== undefined && v !== null && cellToString(v) !== '') return cellToString(v);
+      }
+      return '';
+    }
+
+    let rawFile = null;
+    let outputRows = [];
+
+    const AE_LEADS_PER_BATCH = 100;
+    const AE_BATCH_STORAGE_KEY = 'jejo-ae-batch-export-v1';
+
+    let batchFingerprint = '';
+    let batchInputRowCount = 0;
+    let batchTemplateId = '';
+
+    function fileBatchFingerprint(file, inputRowCount) {
+      if (!file) return '';
+      return [file.name || '', String(file.size || 0), String(file.lastModified || 0), String(inputRowCount || 0)].join('|');
+    }
+
+    function readAeBatchStore() {
+      try {
+        return JSON.parse(localStorage.getItem(AE_BATCH_STORAGE_KEY) || '{}');
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function writeAeBatchStore(store) {
+      try {
+        localStorage.setItem(AE_BATCH_STORAGE_KEY, JSON.stringify(store));
+      } catch (e) {
+        /* quota or private mode */
+      }
+    }
+
+    function getSavedBatchProgress(fp, templateId, inputRowCount) {
+      const store = readAeBatchStore();
+      const rec = store[fp];
+      if (!rec || rec.templateId !== templateId || Number(rec.inputRowCount) !== Number(inputRowCount)) return null;
+      const nextLeadIndex = Number(rec.nextLeadIndex) || 1;
+      return { nextLeadIndex };
+    }
+
+    function saveBatchProgress(fp, templateId, inputRowCount, nextLeadIndex) {
+      const store = readAeBatchStore();
+      store[fp] = { templateId, inputRowCount, nextLeadIndex };
+      writeAeBatchStore(store);
+    }
+
+    function clearBatchProgressForFingerprint(fp) {
+      const store = readAeBatchStore();
+      delete store[fp];
+      writeAeBatchStore(store);
+    }
+
+    function hideBatchPanel() {
+      const panel = document.getElementById('batchPanel');
+      if (panel) panel.style.display = 'none';
+      const resumeBanner = document.getElementById('resumeBanner');
+      const resumeActions = document.getElementById('resumeActions');
+      const continueBtn = document.getElementById('resumeContinueBtn');
+      if (resumeBanner) {
+        resumeBanner.classList.remove('show');
+        resumeBanner.textContent = '';
+      }
+      if (resumeActions) resumeActions.style.display = 'none';
+      if (continueBtn) continueBtn.style.display = '';
+      batchFingerprint = '';
+      batchInputRowCount = 0;
+      batchTemplateId = '';
+    }
+
+    function refreshBatchHint() {
+      const hint = document.getElementById('batchHint');
+      const startEl = document.getElementById('startLeadInput');
+      const numEl = document.getElementById('numBatchesInput');
+      if (!hint || !startEl || !numEl) return;
+      if (!outputRows.length) {
+        hint.textContent = '';
+        return;
+      }
+      const total = outputRows.length;
+      let start = parseInt(startEl.value, 10);
+      if (Number.isNaN(start) || start < 1) start = 1;
+      if (start > total) start = total;
+      let remaining = total - start + 1;
+      if (remaining < 0) remaining = 0;
+      const maxBatches = remaining > 0 ? Math.ceil(remaining / AE_LEADS_PER_BATCH) : 1;
+      let num = parseInt(numEl.value, 10);
+      if (Number.isNaN(num) || num < 1) num = 1;
+      if (num > maxBatches) num = maxBatches;
+      numEl.value = String(Math.max(1, num));
+      startEl.value = String(start);
+
+      const leadsThisRun = Math.min(num * AE_LEADS_PER_BATCH, remaining);
+      const firstDataRows = remaining > 0 ? Math.min(AE_LEADS_PER_BATCH, remaining) : 0;
+      const firstFileRows = remaining > 0 ? 1 + firstDataRows : 1;
+      hint.textContent =
+        total +
+        ' lead(s) formatted. From lead #' +
+        start +
+        ', ' +
+        remaining +
+        ' left. This run: ' +
+        num +
+        ' file(s), up to ' +
+        leadsThisRun +
+        ' lead(s). First file: ' +
+        firstFileRows +
+        ' row(s) (1 header + ' +
+        firstDataRows +
+        ' data' +
+        (firstDataRows === AE_LEADS_PER_BATCH ? ', full batch 101 rows' : '') +
+        ').';
+    }
+
+    function syncResumeBannerAndActions() {
+      const resumeBanner = document.getElementById('resumeBanner');
+      const resumeActions = document.getElementById('resumeActions');
+      const continueBtn = document.getElementById('resumeContinueBtn');
+      const restartBtn = document.getElementById('resumeRestartBtn');
+      const startEl = document.getElementById('startLeadInput');
+      const numEl = document.getElementById('numBatchesInput');
+      if (!resumeBanner || !resumeActions || !continueBtn || !restartBtn || !outputRows.length || !batchFingerprint) {
+        if (resumeBanner) resumeBanner.classList.remove('show');
+        if (resumeActions) resumeActions.style.display = 'none';
+        if (continueBtn) continueBtn.style.display = '';
+        return;
+      }
+
+      const total = outputRows.length;
+      const saved = getSavedBatchProgress(batchFingerprint, batchTemplateId, batchInputRowCount);
+
+      if (!saved || saved.nextLeadIndex <= 1) {
+        resumeBanner.classList.remove('show');
+        resumeBanner.textContent = '';
+        resumeActions.style.display = 'none';
+        continueBtn.style.display = '';
+        return;
+      }
+
+      if (saved.nextLeadIndex <= total) {
+        const lastDone = saved.nextLeadIndex - 1;
+        resumeBanner.textContent =
+          'This browser remembers this file (name + size + date + row count) and template: last time exports ended after lead ' +
+          lastDone +
+          ' of ' +
+          total +
+          '. Next lead is ' +
+          saved.nextLeadIndex +
+          '.';
+        resumeBanner.classList.add('show');
+        resumeActions.style.display = 'flex';
+        continueBtn.style.display = '';
+        continueBtn.textContent = 'Continue from lead ' + saved.nextLeadIndex;
+        restartBtn.textContent = 'Start from lead 1';
+        continueBtn.onclick = function () {
+          startEl.value = String(saved.nextLeadIndex);
+          const rem = total - saved.nextLeadIndex + 1;
+          numEl.value = String(Math.max(1, Math.ceil(rem / AE_LEADS_PER_BATCH)));
+          refreshBatchHint();
+        };
+        restartBtn.onclick = function () {
+          startEl.value = '1';
+          numEl.value = '1';
+          clearBatchProgressForFingerprint(batchFingerprint);
+          syncResumeBannerAndActions();
+          refreshBatchHint();
+        };
+        return;
+      }
+
+      resumeBanner.textContent =
+        'Saved progress is past the end of this file (' +
+        total +
+        ' leads). Reset below or use “Forget saved progress”.';
+      resumeBanner.classList.add('show');
+      resumeActions.style.display = 'flex';
+      continueBtn.style.display = 'none';
+      restartBtn.textContent = 'Start from lead 1 (clear saved position)';
+      restartBtn.onclick = function () {
+        startEl.value = '1';
+        numEl.value = '1';
+        clearBatchProgressForFingerprint(batchFingerprint);
+        continueBtn.style.display = '';
+        restartBtn.textContent = 'Start from lead 1';
+        syncResumeBannerAndActions();
+        refreshBatchHint();
+      };
+    }
+
+    function configureBatchPanelAfterFormat(templateId, inputRowCount) {
+      batchTemplateId = templateId;
+      batchInputRowCount = inputRowCount;
+      batchFingerprint = fileBatchFingerprint(rawFile, inputRowCount);
+
+      const panel = document.getElementById('batchPanel');
+      const startEl = document.getElementById('startLeadInput');
+      const numEl = document.getElementById('numBatchesInput');
+      if (!panel || !startEl || !numEl) return;
+
+      panel.style.display = 'block';
+      startEl.value = '1';
+      numEl.value = '1';
+
+      syncResumeBannerAndActions();
+      refreshBatchHint();
+    }
+
+    function setupBatchExportControls() {
+      const startEl = document.getElementById('startLeadInput');
+      const numEl = document.getElementById('numBatchesInput');
+      const forget = document.getElementById('clearBatchMemoryBtn');
+      if (!startEl || !numEl || !forget || startEl.dataset.bound === '1') return;
+      startEl.dataset.bound = '1';
+      const onChange = function () {
+        refreshBatchHint();
+      };
+      startEl.addEventListener('input', onChange);
+      startEl.addEventListener('change', onChange);
+      numEl.addEventListener('input', onChange);
+      numEl.addEventListener('change', onChange);
+      forget.addEventListener('click', function () {
+        if (batchFingerprint) clearBatchProgressForFingerprint(batchFingerprint);
+        syncResumeBannerAndActions();
+        refreshBatchHint();
+        setStatus('Forgot saved batch progress for this file fingerprint.', 'ok');
+      });
+    }
+
+    function normalizeHeader(text) {
+      if (!text) return '';
+      return String(text).toLowerCase().replace(/[\s._-]+/g, '').replace(/[^a-z0-9]/g, '').trim();
+    }
+
+
+
+    function cellToString(value) {
+      if (value === undefined || value === null || value === '') return '';
+      if (typeof value === 'number') {
+        if (Number.isInteger(value)) return String(value);
+        if (value > 999999 && Math.abs(value - Math.round(value)) < 0.01) return String(Math.round(value));
+      }
+      return String(value).trim();
+    }
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('globalStatus');
+      el.textContent = msg;
+      el.className = 'status' + (type ? ' ' + type : '');
+    }
+
+    function setCounts(inRows, outRows, mapped, defaults) {
+      document.getElementById('inputRows').textContent = inRows;
+      document.getElementById('outputRows').textContent = outRows;
+      document.getElementById('mappedCells').textContent = mapped;
+      document.getElementById('defaultCells').textContent = defaults;
+    }
+
+    function readFileAsArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function parseSheet(ab, template) {
+      const wb = XLSX.read(ab, { type: 'array', raw: true, cellText: false, cellDates: false });
+      const targetSources = buildTargetSources(template);
+      const allTargetKeys = new Set();
+      for (const keys of Object.values(targetSources)) {
+        keys.forEach(k => allTargetKeys.add(k));
+      }
+
+      let bestSheet = null;
+      let bestRows = [];
+      let bestHeaderIndex = 0;
+      let maxMatches = -1;
+
+      for (const sheetName of wb.SheetNames) {
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+        if (rows.length < 1) continue;
+
+        for (let i = 0; i < Math.min(rows.length, 25); i++) {
+          const candidateHeaders = rows[i].map(cellToString).map(normalizeHeader);
+          const matches = candidateHeaders.filter(h => h && allTargetKeys.has(h)).length;
+          if (matches > maxMatches) {
+            maxMatches = matches;
+            bestSheet = sheetName;
+            bestRows = rows;
+            bestHeaderIndex = i;
+          }
+        }
+        if (maxMatches >= 3) break;
+      }
+
+      if (!bestRows.length || maxMatches === 0) {
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+        if (rows.length < 2) return { data: [], rawHeaders: [] };
+        const rawHeaders = rows[0].map(cellToString);
+        const headers = rawHeaders.map(normalizeHeader);
+        const data = [];
+        for (let i = 1; i < rows.length; i++) {
+          const raw = rows[i];
+          if (!raw || raw.every(cell => cellToString(cell) === '')) continue;
+          const obj = {};
+          for (let j = 0; j < headers.length; j++) obj[headers[j]] = cellToString(raw[j]);
+          data.push(obj);
+        }
+        return { data, rawHeaders };
+      }
+
+      const rawHeaders = bestRows[bestHeaderIndex].map(cellToString);
+      const headers = rawHeaders.map(normalizeHeader);
+      const data = [];
+      for (let i = bestHeaderIndex + 1; i < bestRows.length; i++) {
+        const raw = bestRows[i];
+        if (!raw || raw.every(cell => cellToString(cell) === '')) continue;
+        const obj = {};
+        for (let j = 0; j < headers.length; j++) {
+          if (headers[j]) obj[headers[j]] = cellToString(raw[j]);
+        }
+        data.push(obj);
+      }
+      return { data, rawHeaders };
+    }
+
+    function buildMappingHint() {
+      const t = TEMPLATES[document.getElementById('templateSelect').value];
+      const lines = [];
+      for (const [src, trg] of Object.entries(t.sourceToTarget || {})) lines.push(src + ' -> ' + trg);
+      if (t.multiSource) {
+        for (const [tgt, arr] of Object.entries(t.multiSource)) {
+          lines.push('[' + tgt + ' alt] ' + arr.join(' | '));
+        }
+      }
+      for (const [key, val] of Object.entries(t.defaults || {})) lines.push('[default] ' + key + ' = ' + val);
+      document.getElementById('mappingHint').textContent = lines.join(' | ');
+    }
+
+    function limitedRows(rows, emptyText) {
+      if (!rows.length) return [emptyText || 'None'];
+      const limit = 8;
+      const shown = rows.slice(0, limit);
+      if (rows.length > limit) shown.push('+' + (rows.length - limit) + ' more');
+      return shown;
+    }
+
+    function buildMappingAudit(template, parsed, rows) {
+      const headerSet = new Set(parsed.rawHeaders.map(normalizeHeader).filter(Boolean));
+      const targetSources = buildTargetSources(template);
+      const mappingEntries = Object.entries(targetSources).map(([target, keys]) => ({
+        target,
+        keys,
+        matchedKeys: keys.filter(function (k) { return headerSet.has(k); }),
+      }));
+      const matched = mappingEntries.filter(function (e) { return e.matchedKeys.length; });
+      const missing = mappingEntries.filter(function (e) { return !e.matchedKeys.length; });
+      const usedSourceKeys = new Set();
+      matched.forEach(function (e) {
+        e.matchedKeys.forEach(function (k) { usedSourceKeys.add(k); });
+      });
+      const defaults = Object.entries(template.defaults || {});
+      const blankColumns = template.outputOrder.filter(function (key) {
+        return rows.every(function (row) { return String(row[key] || '').trim() === ''; });
+      });
+      const ignoredHeaders = parsed.rawHeaders.filter(function (header) {
+        const key = normalizeHeader(header);
+        return key && !usedSourceKeys.has(key);
+      });
+
+      return {
+        hasWarnings: Boolean(missing.length || blankColumns.length),
+        sections: [
+          {
+            title: 'Matched mappings',
+            level: matched.length ? 'ok' : 'warn',
+            rows: limitedRows(matched.map(function (e) {
+              return e.target + ' <- ' + e.matchedKeys.join(', ');
+            }), 'No template mappings matched uploaded headers.'),
+          },
+          {
+            title: 'Missing source columns',
+            level: missing.length ? 'warn' : 'ok',
+            rows: limitedRows(missing.map(function (e) {
+              return e.target + ' (need any of: ' + e.keys.join(', ') + ')';
+            }), 'None'),
+          },
+          {
+            title: 'Defaults applied',
+            level: defaults.length ? 'info' : 'ok',
+            rows: limitedRows(defaults.map(function (pair) { return pair[0] + ' = ' + pair[1]; }), 'None'),
+          },
+          {
+            title: 'Blank output columns',
+            level: blankColumns.length ? 'warn' : 'ok',
+            rows: limitedRows(blankColumns, 'None'),
+          },
+          {
+            title: 'Ignored upload columns',
+            level: ignoredHeaders.length ? 'info' : 'ok',
+            rows: limitedRows(ignoredHeaders, 'None'),
+          },
+        ],
+      };
+    }
+
+    function renderMappingAudit(audit) {
+      const card = document.getElementById('auditCard');
+      const grid = document.getElementById('auditGrid');
+      if (!audit) {
+        card.style.display = 'none';
+        grid.innerHTML = '';
+        return;
+      }
+      document.getElementById('auditTitle').textContent = audit.hasWarnings
+        ? 'Mapping audit - review before download'
+        : 'Mapping audit - ready';
+      grid.innerHTML = audit.sections.map(section => `
+        <div class="audit-item ${escapeHtml(section.level)}">
+          <strong>${escapeHtml(section.title)}</strong>
+          ${section.rows.map(row => `<div>${escapeHtml(row)}</div>`).join('')}
+        </div>
+      `).join('');
+      card.style.display = 'block';
+    }
+
+    function clearOutput() {
+      outputRows = [];
+      setCounts(0, 0, 0, 0);
+      renderPreview([], []);
+      renderMappingAudit(null);
+      document.getElementById('downloadBtn').disabled = true;
+      hideBatchPanel();
+    }
+
+    async function processFile() {
+      if (!rawFile) return;
+      setStatus('Parsing file...', '');
+      try {
+        const template = TEMPLATES[document.getElementById('templateSelect').value];
+        const ab = await readFileAsArrayBuffer(rawFile);
+        const parsed = parseSheet(ab, template);
+        if (!parsed.data.length) {
+          setStatus('No data rows found in file.', 'err');
+          setCounts(0, 0, 0, 0);
+          renderMappingAudit(null);
+          outputRows = [];
+          document.getElementById('downloadBtn').disabled = true;
+          hideBatchPanel();
+          return;
+        }
+
+        const targetSources = buildTargetSources(template);
+
+        const rows = [];
+        let mappedCount = 0;
+        let defaultCount = 0;
+
+        for (const inputRow of parsed.data) {
+          const out = {};
+          for (const key of template.outputOrder) {
+            const keys = targetSources[key];
+            const rawVal = keys && keys.length ? firstMappedCell(inputRow, keys) : '';
+            if (rawVal !== '') {
+              out[key] = rawVal;
+              mappedCount += 1;
+            } else if (template.defaults[key] !== undefined) {
+              out[key] = template.defaults[key];
+              defaultCount += 1;
+            } else {
+              out[key] = '';
+            }
+          }
+          if (template.normalizeToyotaModels && out.vehicle_model) {
+            out.vehicle_model = normalizeToyotaVehicleModel(out.vehicle_model);
+          }
+          if (template.normalizeMahindraModels && out.interested_vehicle_name) {
+            out.interested_vehicle_name = normalizeMahindraVehicleName(out.interested_vehicle_name);
+          }
+          rows.push(out);
+        }
+
+        outputRows = rows;
+        renderPreview(template.outputOrder, rows);
+        const audit = buildMappingAudit(template, parsed, rows);
+        renderMappingAudit(audit);
+        setCounts(parsed.data.length, rows.length, mappedCount, defaultCount);
+        document.getElementById('downloadBtn').disabled = !rows.length;
+        const templateId = document.getElementById('templateSelect').value;
+        configureBatchPanelAfterFormat(templateId, parsed.data.length);
+        setStatus(
+          audit.hasWarnings
+            ? 'Formatted ' + rows.length + ' row(s). Review mapping audit before download.'
+            : 'Formatted ' + rows.length + ' row(s). Ready to download.',
+          audit.hasWarnings ? 'warn' : 'ok'
+        );
+      } catch (err) {
+        console.error(err);
+        setStatus('Error: ' + err.message, 'err');
+      }
+    }
+
+    function renderPreview(headers, rows) {
+      const head = document.getElementById('previewHead');
+      const body = document.getElementById('previewBody');
+      const preview = rows.slice(0, 250);
+      head.innerHTML = '<tr>' + headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('') + '</tr>';
+      body.innerHTML = preview.map(row => '<tr>' + headers.map(h => '<td>' + escapeHtml(row[h]) + '</td>').join('') + '</tr>').join('');
+      document.getElementById('tableWrap').style.display = rows.length ? 'block' : 'none';
+    }
+
+    async function downloadOutput() {
+      if (!outputRows.length) return;
+      refreshBatchHint();
+
+      const total = outputRows.length;
+      const startEl = document.getElementById('startLeadInput');
+      const numEl = document.getElementById('numBatchesInput');
+      let start = parseInt(startEl && startEl.value, 10);
+      if (Number.isNaN(start) || start < 1) start = 1;
+      if (start > total) {
+        setStatus('Start lead must be between 1 and ' + total + '.', 'err');
+        return;
+      }
+      const remaining = total - start + 1;
+      if (remaining < 1) {
+        setStatus('Nothing left to export from this start position.', 'err');
+        return;
+      }
+      const maxBatches = Math.ceil(remaining / AE_LEADS_PER_BATCH);
+      let numBatches = parseInt(numEl && numEl.value, 10);
+      if (Number.isNaN(numBatches) || numBatches < 1) numBatches = 1;
+      if (numBatches > maxBatches) numBatches = maxBatches;
+
+      const template = TEMPLATES[document.getElementById('templateSelect').value];
+      const headers = template.outputOrder;
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const safeName = template.label.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+
+      let exported = 0;
+      let filesWritten = 0;
+      for (let b = 0; b < numBatches; b++) {
+        const sliceStartIdx = start - 1 + b * AE_LEADS_PER_BATCH;
+        if (sliceStartIdx >= total) break;
+        const sliceLen = Math.min(AE_LEADS_PER_BATCH, total - sliceStartIdx);
+        const slice = outputRows.slice(sliceStartIdx, sliceStartIdx + sliceLen);
+        const aoa = [headers];
+        for (let i = 0; i < slice.length; i++) {
+          const row = slice[i];
+          aoa.push(headers.map(h => row[h] || ''));
+        }
+        const part = numBatches > 1 ? '_batch' + (b + 1) : '';
+        const fileName = safeName + '_AutoEngage_' + dateStr + part + '.csv';
+        const csvRows = aoa.map(row =>
+          row.map(cell => {
+            const s = String(cell || '');
+            return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+          }).join(',')
+        );
+        const bom = '\uFEFF';
+        const blob = new Blob([bom + csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        exported += sliceLen;
+        filesWritten += 1;
+        if (b < numBatches - 1 && sliceStartIdx + sliceLen < total) {
+          await new Promise(function (resolve) {
+            setTimeout(resolve, 420);
+          });
+        }
+      }
+
+      const nextLeadIndex = start + exported;
+      if (batchFingerprint && batchTemplateId) {
+        saveBatchProgress(batchFingerprint, batchTemplateId, batchInputRowCount, nextLeadIndex);
+      }
+
+      if (nextLeadIndex <= total) {
+        startEl.value = String(nextLeadIndex);
+        const rem = total - nextLeadIndex + 1;
+        numEl.value = String(Math.max(1, Math.ceil(rem / AE_LEADS_PER_BATCH)));
+      } else {
+        startEl.value = '1';
+        numEl.value = '1';
+      }
+
+      syncResumeBannerAndActions();
+      refreshBatchHint();
+
+      setStatus(
+        'Downloaded ' +
+        filesWritten +
+        ' file(s), ' +
+        exported +
+        ' lead(s). Saved next start: lead ' +
+        Math.min(nextLeadIndex, total + 1) +
+        '.',
+        'ok'
+      );
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function syncBrandLogo(theme) {
+      document.querySelectorAll('.brand-mark img').forEach(img => {
+        img.src = theme === 'dark' ? img.dataset.darkLogo : img.dataset.lightLogo;
+      });
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('jejo-theme', theme);
+      syncBrandLogo(theme);
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
+    function setupDropZone() {
+      const zone = document.getElementById('dropZone');
+      const input = document.getElementById('fileInput');
+      const uploadBtn = document.getElementById('uploadBtn');
+      const fileStatus = document.getElementById('fileStatus');
+
+      input.addEventListener('change', function () {
+        const file = this.files[0];
+        if (!file) return;
+        if (!validateFileSize(file)) { this.value = ''; return; }
+        rawFile = file;
+        clearOutput();
+        fileStatus.textContent = 'Loaded: ' + file.name;
+        fileStatus.className = 'status ok';
+        zone.classList.add('has-file');
+        document.getElementById('processBtn').disabled = false;
+        setStatus('File loaded. Click Format File.', '');
+      });
+
+      uploadBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        input.click();
+      });
+
+      zone.addEventListener('click', function () {
+        input.click();
+      });
+
+      zone.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        zone.classList.add('drag-over');
+      });
+
+      zone.addEventListener('dragleave', function () {
+        zone.classList.remove('drag-over');
+      });
+
+      zone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        const f = e.dataTransfer.files[0];
+        if (!f) return;
+        const dt = new DataTransfer();
+        dt.items.add(f);
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change'));
+      });
+    }
+
+    function initTemplates() {
+      const select = document.getElementById('templateSelect');
+      const entries = Object.entries(TEMPLATES);
+      select.innerHTML = entries.map(([key, tpl]) => '<option value="' + key + '">' + tpl.label + '</option>').join('');
+      select.addEventListener('change', function () {
+        buildMappingHint();
+        clearOutput();
+        setStatus(rawFile ? 'Template changed. Click Format File again.' : '', rawFile ? 'warn' : '');
+      });
+      buildMappingHint();
+    }
+
+    applyTheme(localStorage.getItem('jejo-theme') || 'dark');
+    initTemplates();
+    setupDropZone();
+    setupBatchExportControls();
+  </script>
+</body>
+
+</html>
